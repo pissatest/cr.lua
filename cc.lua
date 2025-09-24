@@ -1,176 +1,187 @@
 -- Full AutoDeploy script (Part 1)
--- Services
+-- -------------------------
+-- Services & Essentials
+-- -------------------------
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local Workspace = workspace
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+
 local localPlayer = Players.LocalPlayer
-local UserInputService = game:GetService("UserInputService")
-
--- Load Fluent + Addons
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
-
--- Create window
-local Window = Fluent:CreateWindow({
-    Title = "Arena Royale by issa",
-    SubTitle = "https://discord.gg/gZMQFPnPFz",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 520),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.RightControl
-})
-
--- Tabs
-local Tabs = {
-    AutoDeploy = Window:AddTab({ Title = "Auto Deploy", Icon = "package" }),
-    Settings   = Window:AddTab({ Title = "Settings",    Icon = "settings" })
-}
-local Options = Fluent.Options
-
--- -------------------------
--- Configuration / CFrames
--- -------------------------
-local DEPLOY_CF_FOR_RED_PLAYER  = CFrame.new(-3, 26, -164)
-local DEPLOY_CF_FOR_BLUE_PLAYER = CFrame.new(-2, 24, 110)
-local SAFE_CF_RED  = CFrame.new(-2, 24, 110)
-local SAFE_CF_BLUE = CFrame.new(-3, 26, -164)
-local DEPLOY_REMOTE_NAME = "Deploy"
-local TEAM_REMOTE_NAME   = "Team"
 local hasBeenTeleportedForRound = false
 
--- -------------------------
--- Game Info Cache
--- -------------------------
-local InfoModule = nil
-local function getInfoModule()
-    if not InfoModule then
-        pcall(function()
-            InfoModule = require(ReplicatedStorage:WaitForChild("Info"))
-        end)
-    end
-    return InfoModule
-end
-getInfoModule()
+-- Deployment & Remote Names
+local DEPLOY_REMOTE_NAME = "DeployRemote"
+local TEAM_REMOTE_NAME = "TeamChangeRemote"
+
+-- Deploy Positions (adjust as needed)
+local DEPLOY_CF_FOR_RED_PLAYER = CFrame.new(Vector3.new(-50, 5, 0))
+local DEPLOY_CF_FOR_BLUE_PLAYER = CFrame.new(Vector3.new(50, 5, 0))
+
+-- Safe Mode Positions
+local SAFE_CF_RED = CFrame.new(Vector3.new(-100, 10, 0))
+local SAFE_CF_BLUE = CFrame.new(Vector3.new(100, 10, 0))
 
 -- -------------------------
--- Helpers: Team & Game Data
+-- Utility Functions
 -- -------------------------
 local function getPlayerTeam()
-    if localPlayer and localPlayer:FindFirstChild("Stats") then
-        local st = localPlayer.Stats:FindFirstChild("Team")
-        if st and typeof(st.Value) == "string" and st.Value ~= "" then
-            return st.Value
-        end
-    end
-    if localPlayer and localPlayer.Team and localPlayer.Team.Name then
-        return localPlayer.Team.Name
-    end
-    return "Spectator"
-end
-
-local function hasAnyTool()
-    if not localPlayer or not localPlayer.Character or not localPlayer:FindFirstChild("Backpack") then return false end
-    if localPlayer.Character:FindFirstChildOfClass("Tool") then return true end
-    if localPlayer.Backpack:FindFirstChildOfClass("Tool") then return true end
-    return false
+    local team = localPlayer.Team
+    return team and team.Name or "Spectator"
 end
 
 local function getTeamWithLeastPlayers()
-    local blueCount, redCount = 0, 0
+    local redCount, blueCount = 0, 0
     for _, plr in ipairs(Players:GetPlayers()) do
-        local tname
-        if plr:FindFirstChild("Stats") and plr.Stats:FindFirstChild("Team") then
-            tname = plr.Stats.Team.Value
-        elseif plr.Team and plr.Team.Name then
-            tname = plr.Team.Name
+        if plr.Team then
+            if plr.Team.Name == "Red" then redCount += 1
+            elseif plr.Team.Name == "Blue" then blueCount += 1 end
         end
-        if tname == "Blue" then blueCount += 1
-        elseif tname == "Red" then redCount += 1 end
     end
-    return (blueCount <= redCount) and "Blue" or "Red"
-end
-
-local function getUnitCost(unitName)
-    local info = getInfoModule()
-    if info and info[unitName] and info[unitName].Elixir then
-        return tonumber(info[unitName].Elixir)
-    end
-    return nil
+    return (redCount <= blueCount) and "Red" or "Blue"
 end
 
 local function getCurrentElixir()
-    local myTeam = getPlayerTeam()
-    local elixirValue = 0
-    
-    if myTeam == "Blue" then
-        local elixirB = ReplicatedStorage.Game:FindFirstChild("ElixirB")
-        if elixirB and (elixirB:IsA("IntValue") or elixirB:IsA("NumberValue")) then
-            elixirValue = elixirB.Value
-        end
-    elseif myTeam == "Red" then
-        local elixirR = ReplicatedStorage.Game:FindFirstChild("ElixirR")
-        if elixirR and (elixirR:IsA("IntValue") or elixirR:IsA("NumberValue")) then
-            elixirValue = elixirR.Value
-        end
-    end
-    return elixirValue
+    local stats = localPlayer:FindFirstChild("leaderstats")
+    if not stats then return 0 end
+    local elixir = stats:FindFirstChild("Elixir")
+    return elixir and elixir.Value or 0
+end
+
+local function getUnitCost(unitName)
+    local unitsFolder = ReplicatedStorage:FindFirstChild("Units")
+    if not unitsFolder then return nil end
+    local unit = unitsFolder:FindFirstChild(unitName)
+    if not unit then return nil end
+    local cost = unit:FindFirstChild("Cost")
+    return cost and cost.Value or nil
+end
+
+local function hasAnyTool()
+    local char = localPlayer.Character
+    if not char then return false end
+    if char:FindFirstChildOfClass("Tool") then return true end
+    local backpack = localPlayer:FindFirstChild("Backpack")
+    return backpack and backpack:FindFirstChildOfClass("Tool") ~= nil
 end
 
 -- -------------------------
--- UI Elements
+-- UI Library (Fluent)
 -- -------------------------
-Tabs.AutoDeploy:AddParagraph({ Title = "Unit Deployment", Content = "Choose a unit and enable the toggles below. Auto Deploy will spawn and equip the unit. Auto Attack will make it attack." })
-local unitDropdown = Tabs.AutoDeploy:AddDropdown("UnitToSpawn", { Title = "Unit to Spawn", Values = {"None"}, Default = "None" })
-local autoDeployToggle = Tabs.AutoDeploy:AddToggle("AutoDeployEnabled", { Title = "Enable Auto Deploy", Default = false })
-local autoAttackToggle = Tabs.AutoDeploy:AddToggle("AutoAttackEnabled", { Title = "Enable Auto Attack", Default = false })
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/main/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/main/Addons/InterfaceManager.lua"))()
 
-Tabs.AutoDeploy:AddParagraph({ Title = "Team Controls", Content = "Auto join a team while Spectator." })
-local teamDropdown = Tabs.AutoDeploy:AddDropdown("TeamToJoin", { Title = "Team to Join", Values = {"Auto (Least Players)", "Blue", "Red"}, Default = "Auto (Least Players)" })
-local autoJoinToggle = Tabs.AutoDeploy:AddToggle("AutoJoinTeam", { Title = "Auto Join Team (when Spectator)", Default = false })
-local joinDelayInput = Tabs.AutoDeploy:AddInput("JoinTeamDelay", { Title = "Seconds to wait to Join", Default = 0, Numeric = true, MaxLength = 2, Min = 0, Max = 60 })
-
-Tabs.AutoDeploy:AddParagraph({ Title = "Safe Mode", Content = "When enabled: if enemy KingTower is destroyed you'll be teleported into your tower." })
-local safeModeToggle = Tabs.AutoDeploy:AddToggle("SafeMode", { Title = "Enable Safe Mode", Default = false })
+local Window = Fluent:CreateWindow({
+    Title = "Arena Royale GUI",
+    SubTitle = "by issa",
+    TabWidth = 140,
+    Size = UDim2.fromOffset(600, 400),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
 
 -- -------------------------
--- GUI Resize Sliders
+-- Tabs
 -- -------------------------
-Tabs.Settings:AddParagraph({ Title = "GUI Resize", Content = "Change the GUI size below." })
-local guiWidth = Tabs.Settings:AddSlider("GUIWidth", { Title = "Window Width", Min = 400, Max = 900, Default = 580 })
-local guiHeight = Tabs.Settings:AddSlider("GUIHeight", { Title = "Window Height", Min = 300, Max = 700, Default = 520 })
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main", Icon = "sword" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+}
 
-guiWidth:OnChanged(function(val)
-    Window.Window.Size = UDim2.fromOffset(val, Options.GUIHeight.Value)
+-- -------------------------
+-- Main Options
+-- -------------------------
+local autoDeployToggle = Tabs.Main:AddToggle("AutoDeployEnabled", { Title = "Auto Deploy", Default = false })
+local autoAttackToggle = Tabs.Main:AddToggle("AutoAttackEnabled", { Title = "Auto Attack", Default = false })
+local safeModeToggle = Tabs.Main:AddToggle("SafeModeEnabled", { Title = "Safe Mode (Tower Win TP)", Default = true })
+
+local unitDropdown = Tabs.Main:AddDropdown("UnitToSpawn", {
+    Title = "Unit to Spawn",
+    Values = { "None", "Knight", "Archer", "Giant", "Wizard" },
+    Default = "None"
+})
+
+local autoJoinToggle = Tabs.Main:AddToggle("AutoJoinTeam", { Title = "Auto Join Team", Default = false })
+local joinDelayBox = Tabs.Main:AddInput("JoinTeamDelay", {
+    Title = "Join Team Delay (s)",
+    Default = "2",
+    Placeholder = "Seconds",
+    Numeric = true
+})
+local teamDropdown = Tabs.Main:AddDropdown("TeamToJoin", {
+    Title = "Team to Join",
+    Values = { "Auto (Least Players)", "Red", "Blue" },
+    Default = "Auto (Least Players)"
+})
+
+-- -------------------------
+-- Settings Tab
+-- -------------------------
+-- GUI Size Dropdown (new)
+local guiSizeDropdown = Tabs.Settings:AddDropdown("GuiSizePreset", {
+    Title = "GUI Size",
+    Values = { "Tiny", "Small", "Medium", "Large", "Extra Large" },
+    Default = "Small",
+})
+
+-- Apply preset when changed
+guiSizeDropdown:OnChanged(function(value)
+    if Window and Window.Window then
+        if value == "Tiny" then
+            Window.Window.Size = UDim2.fromOffset(400, 260)
+        elseif value == "Small" then
+            Window.Window.Size = UDim2.fromOffset(500, 320)
+        elseif value == "Medium" then
+            Window.Window.Size = UDim2.fromOffset(600, 380)
+        elseif value == "Large" then
+            Window.Window.Size = UDim2.fromOffset(700, 450)
+        elseif value == "Extra Large" then
+            Window.Window.Size = UDim2.fromOffset(800, 520)
+        end
+    end
 end)
-guiHeight:OnChanged(function(val)
-    Window.Window.Size = UDim2.fromOffset(Options.GUIWidth.Value, val)
-end)
 
 -- -------------------------
--- Draggable Toggle Button
+-- Mobile Toggle Button
 -- -------------------------
-local screenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
-screenGui.Name = "ArenaRoyaleToggleUI"
-
 local toggleButton = Instance.new("ImageButton")
-toggleButton.Name = "ToggleUIButton"
-toggleButton.Parent = screenGui
+toggleButton.Name = "GuiToggleButton"
 toggleButton.Image = "rbxassetid://118170308807315"
-toggleButton.Size = UDim2.new(0, 50, 0, 50)
-toggleButton.Position = UDim2.new(0.5, -25, 0, 5)
+toggleButton.Size = UDim2.new(0, 40, 0, 40)
+toggleButton.Position = UDim2.new(0.5, -20, 0, 5)
 toggleButton.BackgroundTransparency = 1
-toggleButton.Active = true
-toggleButton.Draggable = true
+toggleButton.Parent = CoreGui
 
-local uiVisible = true
+local dragging, dragStart, startPos
+toggleButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = toggleButton.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+toggleButton.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        toggleButton.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
 toggleButton.MouseButton1Click:Connect(function()
-    uiVisible = not uiVisible
-    Window.Window.Visible = uiVisible
+    if Window then
+        Window.Window.Visible = not Window.Window.Visible
+    end
 end)
 
 -- -------------------------
