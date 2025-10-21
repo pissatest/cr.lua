@@ -868,6 +868,240 @@ end)
         Icon = "dollar-sign",
         Locked = false
     })
+    --== Divider: Existing Farm features vs Auto Fish ==--
+    FarmTab:Divider()
+
+    --== Auto Fish (integrated) ==--
+    do
+        -- Services / Modules (use existing if present)
+        local ReplicatedStorage = ReplicatedStorage or game:GetService("ReplicatedStorage")
+        local Players = Players or game:GetService("Players")
+        local RunService = RunService or game:GetService("RunService")
+        local LocalPlayer = Players.LocalPlayer
+        local playerGui = playerGui or LocalPlayer:WaitForChild("PlayerGui")
+
+        local okAF, AutoFish = pcall(function()
+            return require(ReplicatedStorage.Client.Gui.Frames.Fishing.FishingWorldAutoFish)
+        end)
+        if not okAF then
+            AutoFish = nil
+        end
+
+        local okAreas, FishingAreas = pcall(function()
+            return require(ReplicatedStorage.Shared.Data.FishingAreas)
+        end)
+        if not okAreas then
+            FishingAreas = {}
+        end
+
+        -- Optional fast reel patch (can be toggled via UI below)
+        local function applyFastReel(enabled)
+            local ok, FishingUtil = pcall(function()
+                return require(ReplicatedStorage.Shared.Utils.FishingUtil)
+            end)
+            if ok and FishingUtil then
+                if enabled then
+                    FishingUtil.BASE_REEL_SPEED = 9999
+                    FishingUtil.GetReelSpeed = function(_, _, _) return 9999 end
+                else
+                    -- no-op: leaving defaults when disabled; game will re-require with defaults on teleport/rejoin
+                end
+            end
+        end
+
+        -- Known fishing spots
+        local LOCATION_DATA = {
+            ["Fisher's Island"]   = { FishingCFrame = CFrame.new(-23622, 9, -159) },
+            ["Blizzard Hills"]    = { FishingCFrame = CFrame.new(-21412, 8, -101001) },
+            ["Poison Jungle"]     = { FishingCFrame = CFrame.new(-19282, 8, 18681) },
+            ["Infernite Volcano"] = { FishingCFrame = CFrame.new(-17223,10,-20487) },
+            ["Lost Atlantis"]     = { FishingCFrame = CFrame.new(-13867,10,-20446) },
+            ["Dream Island"]      = { FishingCFrame = CFrame.new(-21797, 9,-20603) },
+            ["Classic Island"]    = { FishingCFrame = CFrame.new(-41505,10,-20593) },
+        }
+
+        -- Utils
+        local function getHRP()
+            local ch = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            return ch:WaitForChild("HumanoidRootPart")
+        end
+
+        local function equipRod()
+            if ReplicatedStorage and ReplicatedStorage.Shared and ReplicatedStorage.Shared.Framework
+            and ReplicatedStorage.Shared.Framework.Network and ReplicatedStorage.Shared.Framework.Network.Remote
+            and ReplicatedStorage.Shared.Framework.Network.Remote.RemoteEvent then
+                ReplicatedStorage.Shared.Framework.Network.Remote.RemoteEvent:FireServer("EquipRod")
+            end
+        end
+
+        local function teleportToLocation(name)
+            local data = LOCATION_DATA[name]
+            if not data or not data.FishingCFrame then return end
+            local dest = data.FishingCFrame
+            local hrp = getHRP()
+            local radius = 10
+            if (hrp.Position - dest.Position).Magnitude <= radius then return dest end
+            local conn
+            conn = RunService.Heartbeat:Connect(function()
+                local ch = LocalPlayer.Character
+                if ch and ch:FindFirstChild("HumanoidRootPart") then
+                    ch.HumanoidRootPart.CFrame = dest
+                end
+            end)
+            task.delay(2, function() if conn and conn.Connected then conn:Disconnect() end end)
+            return dest
+        end
+
+        local function waitUntilArrived(dest, radius, timeout)
+            radius, timeout = radius or 10, timeout or 6
+            local hrp = getHRP()
+            local t0 = tick()
+            while tick() - t0 < timeout do
+                hrp = getHRP()
+                if (hrp.Position - dest.Position).Magnitude <= radius then return true end
+                RunService.Heartbeat:Wait()
+            end
+            return false
+        end
+
+        local function readyAndStart(dest)
+            if not dest then return end
+            if waitUntilArrived(dest, 12, 8) then
+                equipRod()
+            end
+        end
+
+        -- UI state
+        local automationEnabled = false
+        local fastReelEnabled = true
+        local currentMode = "Specific Zone"
+        local zoneNames = {}
+        for name,_ in pairs(LOCATION_DATA) do table.insert(zoneNames, name) end
+        table.sort(zoneNames)
+        local selectedZone = zoneNames[1] or "Fisher's Island"
+
+        -- UI
+        FarmTab:Section({
+            Title = "Auto Fish",
+            TextXAlignment = "Center",
+            TextSize = 17,
+            Opened = true,
+        })
+
+        local ModeDropdown = FarmTab:Dropdown({
+            Title = "Mode",
+            Desc = "Choose how to pick your fishing spot",
+            Values = {"Specific Zone", "Quest (HUD)", "Leveling (Highest)", "Missing Fish (Auto)"},
+            Value = "Specific Zone",
+            Callback = function(v) currentMode = v end
+        })
+
+        local ZoneDropdown = FarmTab:Dropdown({
+            Title = "Zone (when 'Specific Zone' mode)",
+            Values = zoneNames,
+            Value = selectedZone,
+            Callback = function(v) selectedZone = v end
+        })
+
+        local FastReelToggle = FarmTab:Toggle({
+            Title = "Fast Reel Patch",
+            Value = fastReelEnabled,
+            Callback = function(v)
+                fastReelEnabled = v
+                applyFastReel(v)
+            end
+        })
+        -- apply initial patch
+        applyFastReel(fastReelEnabled)
+
+        local function resolveQuestZone()
+            local hud = playerGui:FindFirstChild("ScreenGui") and playerGui.ScreenGui:FindFirstChild("QuestHUDTask")
+            if hud and hud.Visible then
+                local text = hud.Content and hud.Content.Info and hud.Content.Info.Task and hud.Content.Info.Task.Text or ""
+                local locRaw = text:match("in (.+)")
+                for k,_ in pairs(LOCATION_DATA) do
+                    if locRaw and k:lower() == locRaw:lower() then return k end
+                end
+            end
+            return nil
+        end
+
+        local function getHighestIsland()
+            -- Simple heuristic: pick the last alphabetical zone; replace with game data if needed
+            return zoneNames[#zoneNames]
+        end
+
+        local function getMissingFishZone()
+            -- Fallback: pick first known zone
+            return zoneNames[1]
+        end
+
+        local function computeTarget()
+            if currentMode == "Specific Zone" then
+                return selectedZone
+            elseif currentMode == "Quest (HUD)" then
+                return resolveQuestZone() or "Fisher's Island"
+            elseif currentMode == "Leveling (Highest)" then
+                return getHighestIsland()
+            elseif currentMode == "Missing Fish (Auto)" then
+                return getMissingFishZone()
+            else
+                return "Fisher's Island"
+            end
+        end
+
+        local AutoFishToggle = FarmTab:Toggle({
+            Title = "Enable Auto Fishing",
+            Value = false,
+            Callback = function(state)
+                automationEnabled = state
+                if not AutoFish then
+                    WindUI:Notify({ Title = "Auto Fish", Content = "AutoFish module not found.", Duration = 4 })
+                    return
+                end
+                if state then
+                    local targetName = computeTarget()
+                    local dest = teleportToLocation(targetName)
+                    WindUI:Notify({ Title = "Auto Fish", Content = "Teleporting â "..tostring(targetName), Duration = 4 })
+                    task.spawn(function()
+                        if waitUntilArrived(dest, 12, 8) then
+                            equipRod()
+                            -- ensure module is ready
+                            local ready, t0 = false, tick()
+                            repeat
+                                task.wait(0.4)
+                                if AutoFish and AutoFish.Toggle then ready = true end
+                            until ready or (tick() - t0) > 8
+                            if AutoFish and AutoFish.Toggle then
+                                if not AutoFish.Enabled then
+                                    pcall(function() AutoFish:Toggle(true) end)
+                                end
+                                WindUI:Notify({ Title = "Auto Fish", Content = "Auto Fishing enabled at "..tostring(targetName), Duration = 4 })
+                            else
+                                WindUI:Notify({ Title = "Auto Fish", Content = "AutoFish module not ready.", Duration = 4 })
+                            end
+                        end
+                    end)
+                else
+                    if AutoFish and AutoFish.Enabled then
+                        pcall(function() AutoFish:Toggle(false) end)
+                    end
+                    WindUI:Notify({ Title = "Auto Fish", Content = "Stopped.", Duration = 3 })
+                end
+            end
+        })
+
+        -- keep alignment between mode/zone and live position every few seconds while enabled
+        task.spawn(function()
+            while task.wait(5) do
+                if not automationEnabled then continue end
+                local targetName = computeTarget()
+                local dest = teleportToLocation(targetName)
+                readyAndStart(dest)
+            end
+        end)
+    end
+
 
     local PetsTab = Window:Tab({
         Title = "Pets",
@@ -1168,7 +1402,7 @@ do
                             end
                         end
 
-                        task.wait(math.max(rerollSpeed, 0.05))
+                        task.wait(math.max(rerollSpeed, 0.2))
                     end
                 end
 
@@ -2359,9 +2593,6 @@ To change the timer for the auto sell you MUST first turn off auto sell and then
     })
 
 -- Pets Tab
-
-    PetsTab:Divider()
-    
     PetsTab:Toggle({
         Flag = "EBP",
         Title = "Auto Equip Best Pet",
@@ -2379,6 +2610,117 @@ To change the timer for the auto sell you MUST first turn off auto sell and then
         Callback = function(Value)
             _G.AutoSellPets = Value
             if Value then task.spawn(AutoSellPets) end
+        end
+    })
+
+    PetsTab:Divider()
+
+    local RerollToggle = PetsTab:Toggle({
+        Title = "Start / Stop Rerolling",
+        Callback = function(value)
+        isRerolling = value
+        if not isRerolling then return end
+    
+        task.defer(function()
+            local selectedPetNames = currentSelectedPetNames
+            local selectedEnchantNames = currentSelectedEnchants
+            local rerollSpeed = currentRerollSpeed
+        
+            local targetPetIds, targetEnchants = {}, {}
+        
+            for _, petData in ipairs(equippedPetsData) do
+                if selectedPetNames[petData.name] then table.insert(targetPetIds, petData.id) end
+            end
+        
+            for enchantName, isSelected in pairs(selectedEnchantNames) do
+                if isSelected then table.insert(targetEnchants, parseEnchantName(enchantName)) end
+            end
+        
+            if #targetPetIds == 0 or #targetEnchants == 0 then
+                warn("No target pets or enchants selected. Stopping.")
+                RerollToggle:SetValue(false)
+                isRerolling = false
+                return
+            end
+
+            local petIndex = 1
+        
+            while isRerolling do
+            
+                if petIndex > #targetPetIds then
+                    petIndex = 1 
+                end
+
+                if #targetPetIds == 0 then
+                    warn("No valid target pets remaining. Stopping.")
+                    RerollToggle:SetValue(false)
+                    break
+                end
+
+                local petId = targetPetIds[petIndex]
+            
+                local currentPetData = (function()
+                    local pets = LocalData:Get().Pets
+                    for _, p in pairs(pets) do
+                        if p.Id == petId then return p end
+                    end
+                    return nil
+                end)()
+
+                if not currentPetData then 
+                    warn("Pet with ID " .. petId .. " not found in local data. Removing from target list.")
+                    table.remove(targetPetIds, petIndex)
+                else
+                    local foundEnchantName = hasDesiredEnchant(currentPetData, targetEnchants)
+
+                    if foundEnchantName then
+                        print("Found desired enchant: " .. foundEnchantName .. " on pet ID: " .. petId .. ". Stopping.")
+                        RerollToggle:SetValue(false)
+                        break
+                    else
+                        RemoteFunction:InvokeServer("RerollEnchants", petId, "Gems")
+                        print("Rerolling pet ID: " .. petId)
+                    
+                        petIndex = petIndex + 1
+                    end
+                end
+            
+                if isRerolling then
+                    task.wait(rerollSpeed)
+                end
+            end
+        end)
+    end
+    })
+
+    local PetDropdown = PetsTab:Dropdown({
+        Title = "Pets to reroll",
+        Values = (function() local n = {} for _,v in ipairs(equippedPetsData) do table.insert(n, v.name) end return n end)(),
+        Multi = true,
+        Callback = function(options)
+            currentSelectedPetNames = options
+        end,
+    })
+
+    local EnchantDropdown = PetsTab:Dropdown({
+        Title = "Target enchants", 
+        Values = AllEnchants, 
+        Value = false, 
+        Callback = function(selectedItems)
+        currentSelectedEnchants = selectedItems
+    end
+    })
+
+    local SpeedSlider = PetsTab:Slider({
+        Title = "Reroll speed (delay)", 
+        Step = 0.1,
+        Value ={
+            Min = 0.1,
+            Max = 2.0,
+            Default = 0.4
+        },
+        Callback = function(value)
+            currentRerollSpeed = value
         end
     })
 
