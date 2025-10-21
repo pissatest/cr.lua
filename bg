@@ -1,0 +1,2747 @@
+do
+    local URL = "https://raw.githubusercontent.com/issapizzapizza/blocker/refs/heads/main/uiblocker.lua"
+
+    local function notify(msg)
+        if WindUI and WindUI.Notify then
+            WindUI:Notify({ Title = "Loader", Content = msg, Duration = 4 })
+        else
+            warn(msg)
+        end
+    end
+
+    local ok, err = pcall(function()
+        -- Prefer loadstring; fall back to load if available
+        local loader = loadstring or load
+        if not loader then error("No loadstring/load available") end
+
+        local src = game:HttpGet(URL)
+        local chunk, cerr = loader(src)
+        if not chunk then error(cerr or "compile error") end
+        chunk() -- run the fetched script
+    end)
+
+    if not ok then
+        notify("UI blocker failed to load (continuing): " .. tostring(err))
+    end
+end
+
+if game.PlaceId == 85896571713843 then
+
+    local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+	local NebulaIcons = loadstring(game:HttpGet("https://raw.nebulasoftworks.xyz/nebula-icon-library-loader"))()
+
+	WindUI.Creator.AddIcons("nebula",    NebulaIcons.nebulaIcons)
+
+    WindUI:Notify({
+        Title = "Rcash Hub",
+        Content = "Script Successfully loaded and initialized.",
+        Duration = 5
+    })
+
+-- Get Services
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local HttpService = game:GetService("HttpService")
+    local RunService = game:GetService("RunService")
+    local Players = game:GetService("Players")
+    local Workspace = game:GetService("Workspace")
+    local VirtualInputManager = game:GetService("VirtualInputManager")
+    local UserInputService = game:GetService("UserInputService")
+    local LocalPlayer = Players.LocalPlayer
+    local LocalData = require(ReplicatedStorage.Client.Framework.Services.LocalData)
+    local ItemUtil = require(ReplicatedStorage.Shared.Utils.Stats.ItemUtil)
+    local PowerupsData = require(ReplicatedStorage.Shared.Data.Powerups)
+    local RemoteEvent = ReplicatedStorage.Shared.Framework.Network.Remote.RemoteEvent
+    local RemoteFunction = ReplicatedStorage.Shared.Framework.Network.Remote.RemoteFunction
+    local PhysicalItem = require(ReplicatedStorage.Client.Effects.PhysicalItem)
+    local PlayLocalSound = require(ReplicatedStorage.Client.Gui.Utils.PlayLocalSound)
+
+
+-- Script Version
+    local SCRIPT_VERSION = "v1.4"
+
+-- Global Variables
+    local autoBlowBubbles = false
+    local autoHatch = false
+    local autoCS = false
+    local selectedEgg = ""
+    local autoClaimPTR = false
+    local hideHatchAnim = false
+    local spamE = false
+    local autoCollectPickups = false
+    local autoCollectFreeGifts = false
+    local autoOpenDailyRewards = false
+    local autoSpinHalloweenWheel = false
+    local autoSpinFestivalWheel = false
+    local autoBuyAutumnShop = false
+    local autoEquipBest = false
+    local autoSellPets = false
+    local autoObby = false
+    local autoClaimHalloweenSpin = false
+    local autoClaimFestivalSpin = false
+    local autoGoldenOrb = false
+    local selectedGift = "None"
+    local autoUseSelectedGift = false
+    local skipGiftAnimation = false
+    local autoSell = false
+    local selectedFallback = "Twilight Overworld"
+    local sellTimer = 2
+    local autoGift = false
+    local waitTime = 2.5
+    local giftsToOpen = {}
+    local canChangeTheme = true
+    local canChangeDropdown = true
+    local themeDropdown = nil
+    local darkModeToggle = nil
+    local autoClaimAllChests = false
+    local autoHatchInventoryEggs = false
+    local selectedInventoryEgg = "None"
+    local inventoryEggDisplayNames = {"None"}
+    local isRerolling = false
+    
+
+
+
+-- Gift Controller (PC and Mobile Detection)
+    local function isPC()
+        return UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled
+    end
+
+    local function isMobile()
+        return UserInputService.TouchEnabled
+    end
+
+    _G.OldGift = _G.OldGift or PhysicalItem.Gift
+    _G.PopUpConnection = _G.PopUpConnection or nil
+    local genericFolder = Workspace.Rendered:FindFirstChild("Generic")
+
+    local function getLocalData()
+        return LocalData:Get()
+    end
+
+    local function runGiftController()
+        PhysicalItem.Gift = function(giftId, giftType, giftPosition)
+            if not _G.AutoGift then return _G.OldGift(giftId, giftType, giftPosition) end
+            
+            task.spawn(function()
+                pcall(function()
+                    RemoteEvent:FireServer("ClaimGift", giftId)
+                end)
+            end)
+            
+            return nil
+        end
+
+        if _G.AutoGift then
+            if genericFolder and not _G.PopUpConnection then
+                _G.PopUpConnection = genericFolder.ChildAdded:Connect(function(item)
+                    if item:IsA("Part") and #item.Name == 36 then
+                        item:Destroy()
+                    end
+                end)
+            end
+        else
+            if _G.PopUpConnection then
+                _G.PopUpConnection:Disconnect()
+                _G.PopUpConnection = nil
+            end
+        end
+
+        RemoteEvent:FireServer("SetSetting", "Item Notifications", false)
+
+        if _G.AutoGift then
+            for _, gift in pairs(_G.GiftsToOpen) do
+                while _G.AutoGift do
+                    local am = getLocalData().Powerups[gift] or 0
+                    if am > 0 then
+                        RemoteEvent:FireServer(
+                            "UseGift",
+                            gift,
+                            (am > 25 and 25) or am
+                        )
+                        task.wait(_G.WaitTime)
+                    else
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    if isPC() then
+        WindUI:Notify({
+            Title = "Rcash Hub ",
+            Content = "Detected PC platform, running PC Gift Controller.",
+            Duration = 3
+        })
+        task.spawn(runGiftController)
+    elseif isMobile() then
+        WindUI:Notify({
+            Title = "Rcash Hub ",
+            Content = "Detected Mobile platform, running Mobile Gift Controller.",
+            Duration = 3
+        })
+        task.spawn(runGiftController)
+    end
+
+-- Data Tables
+    local EggCoordinates = {
+        ["Candle Egg"] = Vector3.new(108.63, 8.76, 238.62),
+        ["Autumn Egg"] = Vector3.new(109.51, 8.78, 226.32),
+        ["Infinity Egg"] = Vector3.new(-96.35, 7.87, -26.89), 
+        ["Common Egg"] = Vector3.new(-84.14, 9.35, 1.18), 
+        ["Spotted Egg"] = Vector3.new(-93.88, 9.35, 8.61), 
+        ["Iceshard Egg"] = Vector3.new(-117.46, 9.37, 8.86), 
+        ["Inferno Egg"] = Vector3.new(49.95, 8.83, -11.48), 
+        ["Spikey Egg"] = Vector3.new(-127.22, 9.35, 6.10), 
+        ["Magma Egg"] = Vector3.new(-134.50, 9.35, 1.00), 
+        ["Crystal Egg"] = Vector3.new(-140.09, 9.36, -7.68), 
+        ["Lunar Egg"] = Vector3.new(-141.54, 9.36, -16.74), 
+        ["Void Egg"] = Vector3.new(-145.26, 9.35, -25.22), 
+        ["Hell Egg"] = Vector3.new(-145.92, 9.39, -36.04), 
+        ["Nightmare Egg"] = Vector3.new(-140.27, 9.36, -44.64), 
+        ["Rainbow Egg"] = Vector3.new(-135.30, 9.35, -52.03), 
+        ["Showman Egg"] = Vector3.new(-128.89, 9.36, -59.25), 
+        ["Mining Egg"] = Vector3.new(-120.77, 9.35, -63.88), 
+        ["Cyber Egg"] = Vector3.new(-93.34, 9.61, -63.77), 
+        ["Neon Egg"] = Vector3.new(-82.85, 9.42, -57.32), 
+        ["Chance Egg"] = Vector3.new(9837.83, 26.88, 170.67), 
+        ["Icy Egg"] = Vector3.new(-57.97, 12.35, -0.84), 
+        ["Vine Egg"] = Vector3.new(-64.54, 12.34, 7.92), 
+        ["Lava Egg"] = Vector3.new(-72.49, 12.39, 15.93), 
+        ["Secret Egg"] = Vector3.new(0, 0, 0), 
+        ["Atlantis Egg"] = Vector3.new(-81.63, 12.35, 20.79), 
+        ["Classic Egg"] = Vector3.new(-90.61, 12.34, 25.22),
+        ["Pumpkin egg"] = Vector3.new(-4907.68, 25.20, -548.46),
+        ["Costume egg"] = Vector3.new(-4917.93, 25.20, -548.29),
+        ["Sinister egg"] = Vector3.new(-4929.31, 25.23, -548.13)
+    }
+
+    local EggDisplayNames = {}
+    for displayName in pairs(EggCoordinates) do table.insert(EggDisplayNames, displayName) end
+
+    local GiftDisplayNames = {"None"}
+    local playerDataForGifts = LocalData:Get()
+    if playerDataForGifts and playerDataForGifts.Powerups then
+        local ownedGifts = {}
+        for name, count in pairs(playerDataForGifts.Powerups) do
+            if PowerupsData[name] and PowerupsData[name].Type == "Gift" and count > 0 then
+                table.insert(ownedGifts, {Name = name, Count = count})
+            end
+        end
+        table.sort(ownedGifts, function(a, b) return a.Name < b.Name end)
+        for _, giftInfo in ipairs(ownedGifts) do
+            table.insert(GiftDisplayNames, ("%s: %d"):format(giftInfo.Name, giftInfo.Count))
+        end
+    end
+
+    local sellPositions = {
+        ["Twilight Overworld"] = Vector3.new(-70.92, 6861.75, 116.3),
+        ["Base (W1 Surface)"] = Vector3.new(77.24, 8.46, -112.75),
+        ["Minigame World W2 Surface"] = Vector3.new(9921.87, 25.88, 137.44),
+        ["Minigame World Robot Factory"] = Vector3.new(9853.21, 13408.82, 241.91),
+        ["Bubble Rift"] = Vector3.new(-326.35, 27.87, 192.93)
+    }
+
+    local inventoryEggTypes = {
+        "Season 8 Egg",
+        "Stellaris Egg",
+        "Spooky Egg",
+        "Easter Egg",
+        "Season 7 Egg",
+        "Milestone Egg",
+        "Event Reward Egg"
+    }
+
+    local AllEnchants = {
+        "Bubbler I", "Bubbler II", "Bubbler III", "Bubbler IV", "Bubbler V", "Gleaming I", "Gleaming II", "Gleaming III",
+        "Looter I", "Looter II", "Looter III", "Looter IV", "Looter V", "Team Up I", "Team Up II", "Team Up III", "Team Up IV", "Team Up V",
+        "High Roller", "Infinity", "Magnetism", "Secret Hunter", "Ultra Roller", "Determination", "Shiny Seeker"
+    }
+    local enchantLookup = {}
+
+-- Functions
+    function AutoBlowBubbles()
+        while _G.AutoBlowBubbles do
+            game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("BlowBubble")
+            task.wait(0.3)
+        end
+    end
+
+    function AutoHatch()
+        TeleportToEgg(_G.SelectedEgg)
+        while _G.AutoHatch do
+            if _G.SelectedEgg ~= "" then 
+                game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("HatchEgg",_G.SelectedEgg,15)
+            end
+            task.wait(0.3) 
+        end
+    end
+
+    function AutoEquipBest()
+        while _G.AutoEquipBest do
+            game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("EquipBestPets")
+            task.wait(5) 
+        end
+    end
+
+    function AutoSellPets() 
+        while _G.AutoSellPets do                                                                                                                                                                                                                                 
+            game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("SellPets")
+            task.wait(5)
+        end
+    end
+
+    function SpamEKey()
+        while _G.SpamE do
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+            task.wait(0.05) 
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+            task.wait(0.05)
+        end
+    end
+
+    local function CollectPickups()
+        for i, v in next, game:GetService("Workspace").Rendered:GetChildren() do
+            if v.Name == "Chunker" then
+                for i2, v2 in next, v:GetChildren() do
+                    local Part, HasMeshPart = v2:FindFirstChild("Part"), v2:FindFirstChildWhichIsA("MeshPart")
+                    local HasStars = Part and Part:FindFirstChild("Stars")
+                    local HasPartMesh = Part and Part:FindFirstChild("Mesh")
+                    if HasMeshPart or HasStars or HasPartMesh then
+                        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Pickups"):WaitForChild("CollectPickup"):FireServer(v2.Name)
+                        v2:Destroy()
+                    end
+                end
+            end
+        end
+    end
+
+    function AutoPickupLoop()
+        while true do
+            if _G.AutoCollectPickups then pcall(CollectPickups) end
+            task.wait(1)
+        end
+    end
+
+    local HatchEgg = nil
+    local success, result = pcall(function()
+        return require(ReplicatedStorage.Client.Effects:WaitForChild("HatchEgg", 5))
+    end)
+
+    if success and typeof(result) == "table" then
+        HatchEgg = result
+    
+        if HatchEgg and typeof(HatchEgg.Play) == "function" then
+            local OriginalPlay = HatchEgg.Play
+            local PromiseResolve = nil
+            local Promise = Promise or {}
+        
+            if typeof(Promise) == "table" and Promise.resolve and typeof(Promise.resolve) == "function" then
+                PromiseResolve = Promise.resolve
+            end
+
+            HatchEgg.Play = function(...)
+                if _G.HideHatchAnim then
+                    return PromiseResolve and PromiseResolve() or nil
+                else
+                    return OriginalPlay(...)
+                end
+            end
+        else
+            warn("Rcash Hub : Found HatchEgg module, but could not hook the 'Play' function.")
+        end
+    else
+        warn("Rcash Hub : Failed to load the core HatchEgg module:", result)
+    end
+
+    function TeleportToEgg(EggName)
+        local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local HRP = Character and Character:FindFirstChild("HumanoidRootPart")
+        if not HRP then 
+            WindUI:Notify({
+                Title = "Rcash Hub ",
+                Content = "Error: Character or HumanoidRootPart not found.",
+                Duration = 3,
+                Icon = "shield-alert",
+            })
+            return 
+        end
+        local EggPos = EggCoordinates[EggName]
+        if EggPos then
+            HRP.CFrame = CFrame.new(EggPos + Vector3.new(5, 3, 0))
+            WindUI:Notify({
+                Title = "Rcash Hub ",
+                Content = "Teleported to: " .. EggName,
+                Duration = 3
+            })
+        else
+            WindUI:Notify({
+                Title = "Rcash Hub ",
+                Content = "Error: No coordinates found for " .. EggName,
+                Duration = 3,
+                Icon = "egg-off",
+            })
+        end
+    end
+    
+    function AutoCS()
+        while _G.AutoCS do
+            game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("ClaimSeason")
+            task.wait(0.5)
+        end
+    end
+
+    function AutoClaimPTR()
+        while _G.AutoClaimPTR do
+            game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("ClaimAllPlaytime")
+            task.wait(30) 
+        end
+    end
+
+    function AutoHatchInventoryEggs()
+        while _G.AutoHatchInventoryEggs do
+            local playerData = LocalData:Get()
+            if playerData and playerData.Powerups and _G.SelectedInventoryEgg ~= "None" then
+                local amount = playerData.Powerups[_G.SelectedInventoryEgg] or 0
+                if amount > 0 then
+                    pcall(function()
+                        RemoteEvent:FireServer("HatchPowerupEgg", _G.SelectedInventoryEgg, math.min(15, amount))
+                        if amount <= 15 then
+                            _G.AutoHatchInventoryEggs = false
+                            WindUI:Notify({
+                                Title = "Rcash Hub ",
+                                Content = "Ran out of " .. _G.SelectedInventoryEgg .. ". Auto-Hatch stopped.",
+                                Duration = 3,
+                                Icon = "egg-off",
+                            })
+                        end
+                    end)
+                else
+                    _G.AutoHatchInventoryEggs = false
+                    WindUI:Notify({
+                        Title = "Rcash Hub ",
+                        Content = "No " .. _G.SelectedInventoryEgg .. " left. Auto-Hatch stopped.",
+                        Duration = 3,
+                        Icon = "egg-off",
+                    })
+                end
+            end
+            task.wait(0.5)
+        end
+    end
+
+    local function updateInventoryEggDropdown()
+        local playerData = LocalData:Get()
+        if playerData and playerData.Powerups then
+            inventoryEggDisplayNames = {"None"}
+            local ownedEggs = {}
+            for name, count in pairs(playerData.Powerups) do
+                if count > 0 and string.find(name:lower(), "egg") then
+                    table.insert(ownedEggs, {Name = name, Count = count})
+                end
+            end
+            table.sort(ownedEggs, function(a, b) return a.Name < b.Name end)
+            for _, eggInfo in ipairs(ownedEggs) do
+                table.insert(inventoryEggDisplayNames, ("%s: %d"):format(eggInfo.Name, eggInfo.Count))
+            end
+            if inventoryEggDropdown then
+                inventoryEggDropdown:Refresh(inventoryEggDisplayNames, _G.SelectedInventoryEgg)
+            end
+        end
+    end
+
+    task.spawn(function()
+        while true do
+            updateInventoryEggDropdown()
+            task.wait(5)
+        end
+    end)
+    
+    function AutoUseSelectedGift()
+        local baseAmountToUse, useInterval = 25, _G.WaitTime
+        while _G.AutoUseSelectedGift do
+            local s, r = pcall(function()
+                if getgenv() and getgenv().NETWORK_PAUSED then return end
+                if not _G.SelectedGift or _G.SelectedGift == "None" then
+                    _G.AutoUseSelectedGift = false; return
+                end
+                local playerData = LocalData:Get(); if not playerData then return end
+                local currentAmount = playerData.Powerups[_G.SelectedGift] or 0
+                if currentAmount > 0 then
+                    game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("UseGift", _G.SelectedGift, math.min(baseAmountToUse, currentAmount))
+                else
+                    _G.AutoUseSelectedGift = false
+                    WindUI:Notify({
+                        Title = "Rcash Hub",
+                        Content = "Ran out of " .. _G.SelectedGift .. ". Auto-Use stopped.",
+                        Duration = 1,
+                        Icon = "gift",
+                    })
+                end
+            end)
+            if not s then warn("AutoGift Loop Error:", r) end
+            task.wait(useInterval)
+        end
+    end
+
+    function SpinHalloweenWheel()
+        while _G.AutoSpinHalloweenWheel do
+            pcall(function() game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteFunction:InvokeServer("HalloweenWheelSpin") end)
+            pcall(function() game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("ClaimHalloweenWheelSpinQueue") end)
+            task.wait(0.3)
+        end
+    end
+
+    function SpinFestivalWheel()
+        while _G.AutoSpinFestivalWheel do
+            pcall(function() game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteFunction:InvokeServer("FestivalWheelSpin") end)
+            pcall(function() game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("ClaimFestivalWheelSpinQueue") end)
+            task.wait(0.3)
+        end
+    end
+
+    function AutoClaimHalloweenSpin()
+        while _G.AutoClaimHalloweenSpin do
+            pcall(function() game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("ClaimHalloweenFreeWheelSpin") end)
+            task.wait(30) 
+        end
+    end
+
+    function AutoClaimFestivalSpin()
+        while _G.AutoClaimFestivalSpin do
+            pcall(function() game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("ClaimFestivalFreeWheelSpin") end)
+            task.wait(30) 
+        end
+    end
+
+    function AutoBuyAutumnShop()
+        while _G.AutoBuyAutumnShop do
+            pcall(function()
+                game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("BuyShopItem", "autumnnorm-shop", 1, false)
+                task.wait(0.2)
+                game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("BuyShopItem", "autumnnorm-shop", 2, false)
+                task.wait(0.2)
+                game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("BuyShopItem", "autumnnorm-shop", 3, false)
+                task.wait(0.1)
+            end)
+            task.wait(1) 
+        end
+    end
+
+    local DIFFICULTIES_TO_CYCLE = { "Easy", "Medium", "Hard" }
+    local TELEPORT_DELAY = 2.5
+
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local Workspace = game:GetService("Workspace")
+    local LocalPlayer = Players.LocalPlayer
+
+    local LocalData = require(ReplicatedStorage.Client.Framework.Services.LocalData)
+    local RemoteEvent = ReplicatedStorage.Shared.Framework.Network.Remote.RemoteEvent
+    local ObbysFolder = Workspace.Obbys
+    local ObbyTeleports = Workspace.Worlds["Seven Seas"].Areas["Classic Island"].Obbys
+
+    local function teleportTo(target)
+        local character = LocalPlayer.Character
+        if not character or not target then return end
+        local targetCFrame
+        if typeof(target) == "CFrame" then
+            targetCFrame = target
+        elseif target:IsA("BasePart") then
+            targetCFrame = target.CFrame
+        elseif target:IsA("Model") then
+            targetCFrame = target:GetPivot()
+        end
+        if targetCFrame then
+            character:PivotTo(targetCFrame * CFrame.new(0, 3, 0))
+        end
+    end
+
+    local function runObbyCycle(difficulty)
+        if not _G.AutoObby then return end
+        print("Starting obby: " .. difficulty)
+        local teleportPart = ObbyTeleports:FindFirstChild(difficulty) 
+            and ObbyTeleports[difficulty]:FindFirstChild("Portal") 
+            and ObbyTeleports[difficulty].Portal:FindFirstChild("Part")
+        local completePart = ObbysFolder:FindFirstChild(difficulty) and ObbysFolder[difficulty]:FindFirstChild("Complete")
+    
+        if not teleportPart or not completePart then
+            return
+        end
+    
+        teleportTo(teleportPart)
+        task.wait(0.5)
+        RemoteEvent:FireServer("StartObby", difficulty)
+        task.wait(TELEPORT_DELAY)
+        teleportTo(completePart)
+        task.wait(0.5)
+        RemoteEvent:FireServer("CompleteObby")
+        task.wait(0.5)
+
+        local startTime = os.clock()
+        while os.clock() - startTime < 30 and _G.AutoObby do
+            RemoteEvent:FireServer("ClaimObbyChest")
+            task.wait(0.7)
+        end
+    end
+
+    task.spawn(function()
+        while true do
+            task.wait(1)
+            if not _G.AutoObby then continue end  -- Skip if toggled off
+            local character = LocalPlayer.Character
+            local playerData = LocalData:Get()
+            if not character or not character.PrimaryPart or not playerData or not playerData.ObbyCooldowns then
+                continue
+            end
+            local initialPosition = character.PrimaryPart.CFrame
+            local completedAnObbyInCycle = false
+            for _, difficulty in ipairs(DIFFICULTIES_TO_CYCLE) do 
+                if not _G.AutoObby then break end  -- Bail if toggled off mid-cycle
+                local cooldownEndTime = playerData.ObbyCooldowns[difficulty] or 0
+                if os.time() >= cooldownEndTime then
+                    runObbyCycle(difficulty)
+                    completedAnObbyInCycle = true
+                    task.wait(3)
+                    playerData = LocalData:Get()
+                    if not playerData or not playerData.ObbyCooldowns then break end
+                end
+            end
+            if completedAnObbyInCycle then
+                teleportTo(initialPosition)
+            end
+            playerData = LocalData:Get()
+            if not playerData or not playerData.ObbyCooldowns then continue end
+            local nextAvailableTime = math.huge
+            for _, difficulty in ipairs(DIFFICULTIES_TO_CYCLE) do
+                local cooldownEndTime = playerData.ObbyCooldowns[difficulty] or 0
+                if cooldownEndTime > os.time() and cooldownEndTime < nextAvailableTime then
+                    nextAvailableTime = cooldownEndTime
+                end
+            end
+            if nextAvailableTime ~= math.huge then
+                local timeToWait = nextAvailableTime - os.time()
+                if timeToWait > 0 then
+                    print("All obbies are on cooldown. Next check in " .. timeToWait .. " seconds.")
+                    task.wait(timeToWait)
+                end
+            end
+        end
+    end)
+
+    function AutoGoldenOrb()
+        while _G.AutoGoldenOrb do
+            game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("UseGoldenOrb")
+            task.wait(0.1)
+        end
+    end
+
+    local function FindGumRiftPosition()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and obj.Position.Y >= 10125 and obj.Position.Y <= 15955 then
+                if obj.Name:lower():find("sell") or (obj.Parent and obj.Parent.Name:lower():find("rift")) then
+                    return obj.Position
+                end
+            end
+        end
+        return nil
+    end
+
+    function AutoSellFunction()
+        spawn(function()
+            while _G.AutoSell do
+                local player = game.Players.LocalPlayer
+                local char = player.Character
+                if not char or not char:FindFirstChild("HumanoidRootPart") then
+                    wait(1)
+                    continue
+                end
+
+                -- Capture original position before any TP
+                local originalPos = char.HumanoidRootPart.Position
+                print("Original Pos before TP: " .. tostring(originalPos))  -- Debug
+
+                -- Check for x250 rift
+                local riftPos = FindGumRiftPosition()
+                local sellPos
+                if riftPos then
+                    sellPos = riftPos
+                else
+                    -- Fallback
+                    sellPos = sellPositions[_G.SelectedFallback]
+                end
+
+                if sellPos then
+                    -- Intermediate TP to Output for W2 areas
+                    if _G.SelectedFallback == "Minigame World W2 Surface" or _G.SelectedFallback == "Minigame World Robot Factory" then
+                        local outputPart = workspace.Worlds["Minigame Paradise"].Output
+                        if outputPart and outputPart:IsA("BasePart") then
+                            char.HumanoidRootPart.CFrame = CFrame.new(outputPart.Position + Vector3.new(0, 3, 0))
+                            wait(0.5)  -- Wait to stabilize
+                        end
+                    end
+
+                    -- Teleport to sell location with offset
+                    char.HumanoidRootPart.CFrame = CFrame.new(sellPos + Vector3.new(0, 3, 0))
+
+                    wait(0.5)  -- Wait for sell to process
+                    wait(1)    -- Wait 1 second to capture updated position
+                    originalPos = char.HumanoidRootPart.Position  -- Update original position after sell
+                    print("Updated Pos after sell: " .. tostring(originalPos))  -- Debug
+                end
+
+                -- Teleport back to updated original position
+                char.HumanoidRootPart.CFrame = CFrame.new(originalPos)
+                print("Returning to: " .. tostring(originalPos))  -- Debug
+
+                -- Wait for the next cycle based on timer
+                wait(_G.SellTimer)
+            end
+        end)
+    end
+
+    function AutoClaimAllChests()
+        while _G.AutoClaimAllChests do
+            game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("ClaimChest","Giant Chest",true)
+            task.wait(0.2)
+            game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("ClaimChest","Void Chest",true)
+            task.wait(0.2)
+            game:GetService("ReplicatedStorage").Shared.Framework.Network.Remote.RemoteEvent:FireServer("ClaimChest","Ticket Chest",true)
+            task.wait(10)
+        end
+    end
+
+    local function parseEnchantName(name)
+        local romanMap = { I = 1, II = 2, III = 3, IV = 4, V = 5 }
+        local baseName, roman = name:match("^(.*) (%S+)$")
+        local level = romanMap[roman]
+        if baseName and level then
+            return { id = baseName:lower():gsub(" ", "-"), level = level }
+        else
+            return { id = name:lower():gsub(" ", "-"), level = 1 }
+        end
+    end
+
+    for _, fullName in ipairs(AllEnchants) do
+        local parsed = parseEnchantName(fullName)
+        if not enchantLookup[parsed.id] then enchantLookup[parsed.id] = {} end
+        enchantLookup[parsed.id][parsed.level] = fullName
+    end
+
+    local function getEquippedPetsData()
+        local petsData = {}
+        local playerData = LocalData:Get()
+        if not (playerData and playerData.TeamEquipped and playerData.Teams and playerData.Pets) then return {} end
+        local equippedTeamId = playerData.TeamEquipped
+        local teamInfo = playerData.Teams[equippedTeamId]
+        if not (teamInfo and teamInfo.Pets) then return {} end
+        local petDataMap = {}
+        for _, petData in pairs(playerData.Pets) do petDataMap[petData.Id] = petData end
+        for _, petId in ipairs(teamInfo.Pets) do
+            local petInfo = petDataMap[petId]
+            if petInfo then
+                local nameParts = {}
+                if petInfo.Mythic then table.insert(nameParts, "mythic") end
+                table.insert(nameParts, petInfo.Name or "unknown pet")
+                if petInfo.Enchants and next(petInfo.Enchants) then
+                    local enchantNames = {}
+                    for _, enchantData in pairs(petInfo.Enchants) do
+                        local fullName = enchantLookup[enchantData.Id] and enchantLookup[enchantData.Id][enchantData.Level]
+                        table.insert(enchantNames, fullName or enchantData.Id)
+                    end
+                    table.insert(nameParts, "(" .. table.concat(enchantNames, ", ") .. ")")
+                end
+                table.insert(petsData, { name = table.concat(nameParts, " "), id = petId })
+            end
+        end
+        return petsData
+    end
+
+    local function hasDesiredEnchant(petInfo, targetEnchants)
+        if not petInfo.Enchants then return nil end
+        for _, currentEnchant in pairs(petInfo.Enchants) do
+            for _, targetEnchant in ipairs(targetEnchants) do
+                if currentEnchant.Id == targetEnchant.id and currentEnchant.Level == targetEnchant.level then
+                    return enchantLookup[currentEnchant.Id][currentEnchant.Level]
+                end
+            end
+        end
+        return nil
+    end
+
+    local equippedPetsData = getEquippedPetsData()
+    local currentSelectedPetNames = {}
+    local currentSelectedEnchants = {}
+    local currentRerollSpeed = 0.4
+    
+-- Main Window
+    local Window = WindUI:CreateWindow({
+        Title = "Rcash Hub",
+        Icon = "nebula:nebula",
+        Author = "@RdotA",
+        Folder = "RdotA",
+		Background = "rbxassetid://114269510951824",
+        BackgroundImageTransparency = 0.90,
+        Size = UDim2.fromOffset(580, 490),
+        Theme = "Sky",
+        SideBarWidth = 180,
+    })
+
+    Window:Tag({
+        Title = SCRIPT_VERSION,
+        Color = Color3.fromHex("#30ff6a"),
+        Radius = 13,
+    })
+    
+    Window:Tag({
+        Title = "BGSI",
+        Color = Color3.fromHex("#c300ff"),
+        Radius = 13,
+    })
+
+local FPSTag = Window:Tag({Title = "FPS: --", Color = Color3.fromRGB(0, 100, 255), Radius = 13})
+local fps = 0
+local lastTime = tick()
+local frameCount = 0
+
+RunService.Heartbeat:Connect(function()
+    frameCount = frameCount + 1
+    local currentTime = tick()
+    if currentTime - lastTime >= 1 then
+        fps = frameCount / (currentTime - lastTime)
+        frameCount = 0
+        lastTime = currentTime
+    end
+end)
+
+task.spawn(function()
+    while true do
+        FPSTag:SetTitle("FPS: " .. math.floor(fps + 0.5))
+        task.wait(0.06)
+    end
+end)
+
+    Window:SetToggleKey(Enum.KeyCode.RightControl)
+
+    Window:CreateTopbarButton("theme-switcher", "moon", function()
+        local newTheme = WindUI:GetCurrentTheme() == "Dark" and "Light" or "Dark"
+        WindUI:SetTheme(newTheme)
+        if canChangeTheme and darkModeToggle then
+            darkModeToggle:Set(newTheme == "Dark")
+        end
+        if canChangeDropdown and themeDropdown then
+            themeDropdown:Set(newTheme)
+        end
+    end, 990)
+
+    Window:EditOpenButton({
+        Title = "Open Rcash Hub",
+        Icon = "nebula:nebula",
+        CornerRadius = UDim.new(0,12),
+        StrokeThickness = 2,
+        Color = ColorSequence.new(
+            Color3.fromHex("#4b4a4a"), 
+            Color3.fromHex("#aaa8af")
+        ),
+        OnlyMobile = true,
+        Enabled = true,
+        Draggable = true,
+    })
+
+-- Tabs
+    local InfoTab = Window:Tab({
+        Title = "Information",
+        Icon = "info",
+        Locked = false
+    })
+
+    local SS = Window:Tab({
+        Title = "Server Settings",
+        Icon = "chart-no-axes-gantt",
+        Locked = false
+    })
+
+    Window:Divider()
+
+    local FarmTab = Window:Tab({
+        Title = "Auto Farming",
+        Icon = "dollar-sign",
+        Locked = false
+    })
+
+    local PetsTab = Window:Tab({
+        Title = "Pets",
+        Icon = "paw-print",
+        Locked = false
+    })
+
+--=== Pets tab: Enchant Reroller (integrated) ===
+do
+    -- --- Enchant catalog / parsing (reuse if already present) ---
+    AllEnchants = AllEnchants or {
+        "Bubbler I","Bubbler II","Bubbler III","Bubbler IV","Bubbler V",
+        "Gleaming I","Gleaming II","Gleaming III",
+        "Looter I","Looter II","Looter III","Looter IV","Looter V",
+        "Team Up I","Team Up II","Team Up III","Team Up IV","Team Up V",
+        "High Roller","Infinity","Magnetism","Secret Hunter","Ultra Roller","Determination","Shiny Seeker"
+    }
+
+    local function _defaultParse(name)
+        if type(name) ~= "string" then name = tostring(name) end
+        local romanMap = { I=1, II=2, III=3, IV=4, V=5 }
+        local base, roman = name:match("^(.*) (%S+)$")
+        local lvl = romanMap and romanMap[roman]
+        if base and lvl then
+            return { id = base:lower():gsub(" ", "-"), level = lvl }
+        else
+            -- wildcard level when no roman numeral (matches any)
+            return { id = name:lower():gsub(" ", "-"), level = nil }
+        end
+    end
+    parseEnchantName = parseEnchantName or _defaultParse
+
+    enchantLookup = enchantLookup or {}
+    if not next(enchantLookup) then
+        for _, fullName in ipairs(AllEnchants) do
+            local p = parseEnchantName(fullName)
+            enchantLookup[p.id] = enchantLookup[p.id] or {}
+            if p.level then
+                enchantLookup[p.id][p.level] = fullName
+            else
+                enchantLookup[p.id]._any = fullName
+            end
+        end
+    end
+
+    -- --- LocalData helpers (idâpet; equipped listing) ---
+    local function getPetDataById(petId)
+        local pd = LocalData:Get()
+        if not (pd and pd.Pets) then return nil end
+        for _, pet in pairs(pd.Pets) do
+            if pet.Id == petId then return pet end
+        end
+        return nil
+    end
+
+    local function getEquippedPetsForDisplay()
+        local out, pd = {}, LocalData:Get()
+        if not (pd and pd.TeamEquipped and pd.Teams and pd.Pets) then return out end
+        local team = pd.Teams[pd.TeamEquipped]
+        if not (team and team.Pets) then return out end
+
+        for _, petId in ipairs(team.Pets) do
+            local pet = getPetDataById(petId)
+            if pet then
+                local nameParts = {}
+                if pet.Shiny then table.insert(nameParts, "Shiny") end
+                if pet.Mythic then table.insert(nameParts, "Mythic") end
+                table.insert(nameParts, pet.Name or "Unknown Pet")
+                if pet.Enchants and next(pet.Enchants) then
+                    local eNames = {}
+                    for _, e in pairs(pet.Enchants) do
+                        local dict = enchantLookup[e.Id]
+                        local full = dict and ((e.Level and dict[e.Level]) or dict._any)
+                        table.insert(eNames, full or e.Id)
+                    end
+                    table.insert(nameParts, "(" .. table.concat(eNames, ", ") .. ")")
+                end
+                table.insert(out, { name = table.concat(nameParts, " "), id = petId })
+            end
+        end
+        return out
+    end
+
+    -- --- Matching utilities ---
+    local function enchantMatches(current, target)
+        if not current or not target then return false end
+        if current.Id ~= target.id then return false end
+        if target.level == nil then return true end -- wildcard level
+        return current.Level == target.level
+    end
+
+    local function findEnchantSlot(petInfo, targetEnchants, specificSlot)
+        if not petInfo or not petInfo.Enchants then return nil, nil end
+        if specificSlot then
+            local idx = tonumber(specificSlot) or specificSlot
+            local cur = petInfo.Enchants[idx]
+            if cur then
+                for _, t in ipairs(targetEnchants) do
+                    if enchantMatches(cur, t) then
+                        local dict = enchantLookup[cur.Id]
+                        local full = dict and ((cur.Level and dict[cur.Level]) or dict._any)
+                        return full or cur.Id, tonumber(idx) or idx
+                    end
+                end
+            end
+        else
+            for slotKey, cur in pairs(petInfo.Enchants) do
+                for _, t in ipairs(targetEnchants) do
+                    if enchantMatches(cur, t) then
+                        local dict = enchantLookup[cur.Id]
+                        local full = dict and ((cur.Level and dict[cur.Level]) or dict._any)
+                        return full or cur.Id, tonumber(slotKey) or slotKey
+                    end
+                end
+            end
+        end
+        return nil, nil
+    end
+
+    -- --- UI / State ---
+    local isRerolling = false
+    local selectedPets, selectedPrimary, selectedSecondary = {}, {}, {}
+    local selectedItem, autoSwitch = "Gems", false
+    local rerollSpeed = 0.1
+
+    local equippedList = getEquippedPetsForDisplay()
+    local function names(list) local t={} for _,v in ipairs(list) do t[#t+1]=v.name end return t end
+
+    local PetDropdown = PetsTab:Dropdown({
+        Title = "Pets to Reroll",
+        Values = names(equippedList),
+        Multi = true,
+        Callback = function(values) selectedPets = values or {} end
+    })
+
+    local PrimaryDropdown = PetsTab:Dropdown({
+        Title = "Primary Enchants",
+        Desc = "Reroll both slots for these enchants.",
+        Values = AllEnchants,
+        Multi = true,
+        Callback = function(values) selectedPrimary = values or {} end
+    })
+
+    local SecondaryDropdown = PetsTab:Dropdown({
+        Title = "Secondary Enchants",
+        Desc = "After primary found, reroll the other slot for these (Shiny pets only).",
+        Values = AllEnchants,
+        Multi = true,
+        Callback = function(values) selectedSecondary = values or {} end
+    })
+
+    local ItemToUse = PetsTab:Dropdown({
+        Title = "Select What To Use",
+        Values = {"Gems","Orbs","Shadow Crystals"},
+        Value = "Gems",
+        Callback = function(v) selectedItem = v end
+    })
+
+    local SwitchRR = PetsTab:Toggle({
+        Title = "Switch To Reroll Orb When Out Of Gems",
+        Value = false,
+        Callback = function(v) autoSwitch = v end
+    })
+
+    local function setDropdownValue(drop, val)
+        if drop and drop.Set then drop:Set(val)
+        elseif drop and drop.SetValue then drop:SetValue(val) end
+    end
+
+    local RerollToggle = PetsTab:Toggle({
+        Title = "Start / Stop Rerolling",
+        Value = false,
+        Callback = function(on)
+            isRerolling = on
+            if not on then
+                WindUI:Notify({ Title="Stopped", Content="Rerolling stopped.", Duration=3 })
+                return
+            end
+
+            task.spawn(function()
+                -- Resolve selections â ids / targets
+                local current = getEquippedPetsForDisplay()
+
+                local function isDict(t)
+                    for k,_ in pairs(t) do if type(k) ~= "number" then return true end end
+                    return false
+                end
+
+                local targetPetIds = {}
+                if next(selectedPets) then
+                    if isDict(selectedPets) then
+                        for _, p in ipairs(current) do
+                            if selectedPets[p.name] then table.insert(targetPetIds, p.id) end
+                        end
+                    else
+                        for _, name in ipairs(selectedPets) do
+                            for _, p in ipairs(current) do
+                                if p.name == name then table.insert(targetPetIds, p.id) end
+                            end
+                        end
+                    end
+                end
+
+                local primaryTargets = {}
+                if next(selectedPrimary) then
+                    if isDict(selectedPrimary) then
+                        for name, on in pairs(selectedPrimary) do
+                            if on then table.insert(primaryTargets, parseEnchantName(name)) end
+                        end
+                    else
+                        for _, name in ipairs(selectedPrimary) do
+                            table.insert(primaryTargets, parseEnchantName(name))
+                        end
+                    end
+                end
+
+                local secondaryTargets = {}
+                if next(selectedSecondary) then
+                    if isDict(selectedSecondary) then
+                        for name, on in pairs(selectedSecondary) do
+                            if on then table.insert(secondaryTargets, parseEnchantName(name)) end
+                        end
+                    else
+                        for _, name in ipairs(selectedSecondary) do
+                            table.insert(secondaryTargets, parseEnchantName(name))
+                        end
+                    end
+                end
+
+                -- Validation
+                if #targetPetIds == 0 then
+                    WindUI:Notify({ Title="Error", Content="No pets selected to reroll.", Duration=5 })
+                    RerollToggle:Select(false); isRerolling = false; return
+                end
+                if #primaryTargets == 0 then
+                    WindUI:Notify({ Title="Error", Content="No primary enchants selected.", Duration=5 })
+                    RerollToggle:Select(false); isRerolling = false; return
+                end
+                if #secondaryTargets > 0 and selectedItem ~= "Gems" then
+                    WindUI:Notify({ Title="Error", Content="Secondary enchants only supported when using Gems.", Duration=5 })
+                    RerollToggle:Select(false); isRerolling = false; return
+                end
+
+                -- Reroll loop
+                for _, petId in ipairs(targetPetIds) do
+                    if not isRerolling then break end
+
+                    local pretty
+                    for _, p in ipairs(current) do if p.id == petId then pretty = p.name break end end
+                    WindUI:Notify({ Title="Now Targeting", Content="Focusing on: " .. (pretty or "Unknown"), Duration=3 })
+
+                    local done = false
+                    while not done and isRerolling do
+                        local pet = getPetDataById(petId)
+                        if not pet then break end
+
+                        local foundPrimary, primarySlot = findEnchantSlot(pet, primaryTargets)
+                        if foundPrimary then
+                            if #secondaryTargets == 0 then
+                                WindUI:Notify({ Title="Success!", Content=(pretty or "Pet").." got "..foundPrimary..".", Duration=5 })
+                                done = true; break
+                            end
+
+                            if not pet.Shiny then
+                                WindUI:Notify({ Title="Skipping", Content="Secondary rerolling only works for Shiny pets.", Duration=5 })
+                                done = true; break
+                            end
+
+                            local otherSlot = (primarySlot == 1) and 2 or 1
+                            local foundSecondary = select(1, findEnchantSlot(pet, secondaryTargets, otherSlot))
+                            if foundSecondary then
+                                WindUI:Notify({ Title="Success!", Content=(pretty or "Pet").." now has "..foundPrimary.." & "..foundSecondary.."!", Duration=6 })
+                                done = true; break
+                            else
+                                -- chase the other slot only
+                                RemoteEvent:FireServer("RerollEnchant", pet.Id, otherSlot)
+                                task.wait(math.max(rerollSpeed, 0.2))
+                            end
+                        else
+                            -- general reroll by item choice
+                            local ok = true
+                            if selectedItem == "Shadow Crystals" then
+                                RemoteEvent:FireServer("UseShadowCrystal", pet.Id)
+                                task.wait(math.max(rerollSpeed, 0.2))
+                            else
+                                ok = RemoteFunction:InvokeServer("RerollEnchants", pet.Id, selectedItem)
+                            end
+
+                            if not ok then
+                                if autoSwitch and selectedItem == "Gems" then
+                                    selectedItem = "Orbs"
+                                    setDropdownValue(ItemToUse, "Orbs")
+                                    WindUI:Notify({ Title="Switched", Content="Out of Gems, switched to Orbs.", Duration=5 })
+                                else
+                                    WindUI:Notify({ Title="Error", Content="Insufficient "..selectedItem..". Stopping.", Duration=5 })
+                                    RerollToggle:Select(false); isRerolling = false; return
+                                end
+                            end
+                        end
+
+                        task.wait(math.max(rerollSpeed, 0.05))
+                    end
+                end
+
+                if isRerolling then
+                    WindUI:Notify({ Title="Complete!", Content="All selected pets processed.", Duration=5 })
+                    RerollToggle:Select(false); isRerolling = false
+                end
+            end)
+        end
+    })
+
+    -- keep pet list fresh
+    task.spawn(function()
+        while task.wait(5) do
+            if WindUI.Unloaded then break end
+            local list = getEquippedPetsForDisplay()
+            local n = {} for _,v in ipairs(list) do n[#n+1]=v.name end
+            PetDropdown:Refresh(n)
+        end
+    end)
+end
+
+
+        --== Rifts Tab (v1.9 Unified) ==--
+    local RiftsTab = Window:Tab({ Title = "Rifts", Icon = "sparkles" })
+
+    -- Rcash Rift Spawner v1.9 (WindUI Unified)
+    -- Author: @RdotA
+    -- Smart Rift Detection â¢ Auto Teleport via Height Popup â¢ Luck Matching
+
+    -- === Centralized State (prevents global/local shadowing) ===
+    local State = rawget(getfenv(), "RIFT_STATE") or { AutoTeleport = true }
+    rawset(getfenv(), "RIFT_STATE", State)
+
+    -- === Auto-TP Guard Helper (uses State) ===
+    local function shouldAutoTP()
+        return State.AutoTeleport == true
+    end
+
+    --== Services ==--
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local RemoteFunction = ReplicatedStorage.Shared.Framework.Network.Remote.RemoteFunction
+    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+    --== Data ==--
+    local EggNames   = { "Spikey Egg","Magma Egg","Lunar Egg","Crystal Egg","Void Egg","Hell Egg","Rainbow Egg","Mining Egg","Cyber Egg","Neon Egg" }
+    local ChestNames = { "golden-chest","royal-chest","super-chest","dice-rift" }
+
+    local TimeLabels = { [1]="10m",[2]="15m",[3]="20m",[4]="25m",[5]="30m" }
+    local LuckLabels = { [1]="5x",[2]="10x",[3]="15x",[4]="20x",[5]="25x" }
+
+    -- Conversion helpers
+    local function valueToIndex(val, base, step)
+        local idx = math.floor((val - base + (step/2)) / step) + 1
+        return math.clamp(idx, 1, 5)
+    end
+    local function indexToValue(idx, base, step)
+        return base + (math.clamp(idx,1,5)-1)*step
+    end
+
+    --== Helpers ==--
+    local function autoWorld(name, isEgg)
+        if isEgg then
+            local paradise = { ["Mining Egg"]=true, ["Cyber Egg"]=true, ["Neon Egg"]=true }
+            return paradise[name] and "Minigame Paradise" or "The Overworld"
+        else
+            return "The Overworld"
+        end
+    end
+
+    local function toRiftName(name)
+        return string.lower(name):gsub("%s+", "-")
+    end
+
+    local LastSummon = nil
+
+    --== Teleport Helper ==--
+    local function teleportToHeight(riftName, height)
+        if not shouldAutoTP() then return end
+        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp or not height then return end
+        hrp.CFrame = CFrame.new(hrp.Position.X, height, hrp.Position.Z) + Vector3.new(0, 5, 0)
+        WindUI:Notify({ Title = "Teleported to Rift", Content = string.format("%s Rift | Height: %dm", riftName or "Unknown", height), Duration = 5 })
+    end
+
+    --== Rift Height Popup Tracker (Auto-Find Label) ==--
+    local function extractHeightFromText(text)
+        if not text or text == "" then return nil end
+        local clean = text:gsub("<.->", "")
+        local match = clean:match("Height%s*([%d,%.]+)%s*m")
+        if not match then return nil end
+        local numeric = match:gsub("[^%d%.]", "")
+        if numeric == "" then return nil end
+        return tonumber(numeric)
+    end
+
+    --== Universal Spawn Finder (Eggs + Chests Optimized) ==--
+    local function getSpawnCFrame(rift)
+        if not rift then return nil end
+        local eggSpawn = rift:FindFirstChild("EggPlatformSpawn")
+        if eggSpawn then
+            local cf = eggSpawn.WorldPivot or (eggSpawn.GetPivot and eggSpawn:GetPivot())
+            if cf then return cf end
+        end
+        local chestModel = rift:FindFirstChild("Chest")
+        if chestModel then
+            local cf = chestModel.WorldPivot or (chestModel.GetPivot and chestModel:GetPivot())
+            if cf then return cf end
+        end
+        for _, name in ipairs({ "ChestPlatformSpawn", "Spawn", "Platform", "Base" }) do
+            local part = rift:FindFirstChild(name)
+            if part then
+                local cf = part.WorldPivot or (part.GetPivot and part:GetPivot())
+                if cf then return cf end
+            end
+        end
+        if rift.PrimaryPart then
+            local cf = rift.PrimaryPart.WorldPivot or (rift.PrimaryPart.GetPivot and rift.PrimaryPart:GetPivot())
+            if cf then return cf end
+        end
+        return nil
+    end
+
+    local function findClosestRiftByTypeAndY(expectedName, targetY)
+        local folder = workspace:WaitForChild("Rendered"):WaitForChild("Rifts")
+        local expected = string.lower(expectedName or ""):gsub("%s+", "-")
+        local best, bestDiff
+        for _, rift in ipairs(folder:GetChildren()) do
+            local riftName = string.lower(rift.Name)
+            if riftName == expected then
+                local cf = getSpawnCFrame(rift)
+                if cf then
+                    local diff = math.abs(cf.Position.Y - targetY)
+                    if not best or diff < bestDiff then
+                        best, bestDiff = rift, diff
+                    end
+                end
+            end
+        end
+        if not best then
+            for _, rift in ipairs(folder:GetChildren()) do
+                local cf = getSpawnCFrame(rift)
+                if cf then
+                    local diff = math.abs(cf.Position.Y - targetY)
+                    if not best or diff < bestDiff then
+                        best, bestDiff = rift, diff
+                    end
+                end
+            end
+        end
+        return best, bestDiff
+    end
+
+    local function handlePopupLabel(label)
+        if not shouldAutoTP() then return end
+        local function onTextChange()
+            if not shouldAutoTP() then return end
+            local text = label.Text
+            local height = extractHeightFromText(text)
+            if not height then return end
+            task.wait(0.3)
+            local rift, _ = findClosestRiftByTypeAndY(LastSummon and LastSummon.Name or "", height)
+            if not rift then return end
+            local hrp = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            local spawnModel = rift:FindFirstChild("EggPlatformSpawn")
+            if not spawnModel then return end
+            local targetCFrame = spawnModel.WorldPivot or (spawnModel.GetPivot and spawnModel:GetPivot())
+            if not targetCFrame then return end
+            hrp.CFrame = targetCFrame + Vector3.new(0, 5, 0)
+            WindUI:Notify({ Title = "Teleported to Rift", Content = string.format("%s | Height: %dm", rift.Name, height), Duration = 5 })
+        end
+        label:GetPropertyChangedSignal("Text"):Connect(onTextChange)
+        onTextChange()
+    end
+
+    -- Watch PlayerGui for new prompt GUIs being added
+    task.spawn(function()
+        PlayerGui.DescendantAdded:Connect(function(desc)
+            if desc:IsA("TextLabel") and desc.Name == "Label" and desc.Parent and desc.Parent.Name == "Main" then
+                task.wait(0.05)
+                handlePopupLabel(desc)
+            end
+        end)
+    end)
+
+    task.spawn(function()
+        local label
+        for _, obj in ipairs(PlayerGui:GetDescendants()) do
+            if obj:IsA("TextLabel") and obj.Name == "Label" and (obj.Text:find("Successfully summoned") or obj.Text:find("Height")) then
+                label = obj
+                break
+            end
+        end
+        if not label then
+            repeat
+                label = PlayerGui:FindFirstChildWhichIsA("TextLabel", true)
+                task.wait(0.5)
+            until (label and label.Name == "Label" and (label.Text:find("Height") or label.Text:find("Successfully summoned")))
+        end
+        local function handleTextChange()
+            if not shouldAutoTP() then return end
+            local text = label.Text or ""
+            local height = extractHeightFromText(text)
+            if not height then return end
+            task.wait(0.3)
+            local rift, _ = findClosestRiftByTypeAndY(LastSummon and LastSummon.Name or "", height)
+            if not rift then return end
+            local hrp = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            local spawnModel = rift:FindFirstChild("EggPlatformSpawn")
+            if not spawnModel then return end
+            local targetCFrame = spawnModel.WorldPivot or (spawnModel.GetPivot and spawnModel:GetPivot())
+            if not targetCFrame then return end
+            hrp.CFrame = targetCFrame + Vector3.new(0, 5, 0)
+            WindUI:Notify({ Title = "Teleported to Rift", Content = string.format("%s | Height: %dm", rift.Name, height), Duration = 5 })
+        end
+        label:GetPropertyChangedSignal("Text"):Connect(handleTextChange)
+    end)
+
+    --== Summon Rift ==--
+    local function summonRift(isEgg, name, timeIndex, luckIndex)
+        local world = autoWorld(name, isEgg)
+        local payload = { Type = isEgg and "Egg" or "Chest", Name = name, Time = timeIndex, World = world }
+        if isEgg then payload.Luck = luckIndex end
+        local result = RemoteFunction:InvokeServer("SummonRift", payload)
+        WindUI:Notify({ Title = "Rift Summoned", Content = string.format("%s (%s%s)", name, TimeLabels[timeIndex], isEgg and (", Luck "..LuckLabels[luckIndex]) or ""), Duration = 4 })
+        if shouldAutoTP() then
+            LastSummon = { Name = name, IsEgg = isEgg, LuckLabel = isEgg and LuckLabels[luckIndex] or nil, TimeLabel = TimeLabels[timeIndex], Timestamp = os.clock() }
+        end
+    end
+
+    --== UI ==--
+    RiftsTab:Paragraph({ Title = "Summon Rift", Desc = "Spawn any Egg or Chest Rift with custom duration. Luck only applies to Eggs." })
+
+    local AllRifts = {}
+    for _, n in ipairs(EggNames) do table.insert(AllRifts, n) end
+    for _, n in ipairs(ChestNames) do table.insert(AllRifts, n) end
+
+    local RiftCfg = { Name = AllRifts[1], TimeIndex = 1, LuckIndex = 1 }
+
+    local RiftDropdown = RiftsTab:Dropdown({
+        Title = "Rift Type",
+        Values = AllRifts,
+        Value = RiftCfg.Name,
+        Multi = false,
+        Callback = function(v)
+            RiftCfg.Name = v
+            local isEgg = table.find(EggNames, v) ~= nil
+            LuckSlider:SetVisible(isEgg)
+        end
+    })
+
+    local TimeSlider = RiftsTab:Slider({
+        Title = "Rift Duration",
+        Step = 5,
+        Value = { Min = 10, Max = 30, Default = indexToValue(RiftCfg.TimeIndex, 10, 5) },
+        Display = function(v)
+            local idx = valueToIndex(v, 10, 5)
+            return TimeLabels[idx]
+        end,
+        Callback = function(v)
+            RiftCfg.TimeIndex = valueToIndex(v, 10, 5)
+        end
+    })
+
+    LuckSlider = RiftsTab:Slider({
+        Title = "Rift Luck",
+        Step = 5,
+        Value = { Min = 5, Max = 25, Default = indexToValue(RiftCfg.LuckIndex, 5, 5) },
+        Display = function(v)
+            local idx = valueToIndex(v, 5, 5)
+            return LuckLabels[idx]
+        end,
+        Callback = function(v)
+            RiftCfg.LuckIndex = valueToIndex(v, 5, 5)
+        end
+    })
+
+    RiftsTab:Toggle({
+        Title = "Auto Teleport to Rift",
+        Value = State.AutoTeleport,
+        Callback = function(v)
+            State.AutoTeleport = v
+        end
+    })
+
+    RiftsTab:Button({
+        Title = "Summon Rift",
+        Icon = "zap",
+        Callback = function()
+            local isEgg = table.find(EggNames, RiftCfg.Name) ~= nil
+            summonRift(isEgg, RiftCfg.Name, RiftCfg.TimeIndex, RiftCfg.LuckIndex)
+        end
+    })
+
+    print("[Rcash-Rift] Rift Spawner v1.9 ready (integrated).")
+    --== End Rifts Tab v1.9 ==--
+
+    --== Rifts Tab â¢ Auto Rift Hunter (v1.1 integrated) ==--
+    -- This section integrates the Hunter into the existing "Rifts" tab.
+    -- Reuses EggNames, toRiftName(), getSpawnCFrame() from the spawner section.
+
+    -- State
+    local Hunter_selectedEggs = {}   -- normalized names (lowercase-dashed)
+    local Hunter_minLuck = 5         -- minimum luck multiplier (x)
+    local Hunter_scanDelay = 0.5     -- seconds between scans
+    local Hunter_enabled = false
+    local Hunter_currentTarget = nil -- {rift=Instance, score=number, name=string, luck=number, timeLeft=number}
+    local Hunter_lastTeleportedRift = nil
+
+    -- Safe teleport that won't spam if we're already at the same rift
+    local function Hunter_safeTeleportToRift(rift)
+        if not rift or not rift.Parent then return end
+        if Hunter_lastTeleportedRift == rift then return end
+        local hrp = game:GetService("Players").LocalPlayer.Character and game:GetService("Players").LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local cf = getSpawnCFrame and getSpawnCFrame(rift) or (rift.GetPivot and rift:GetPivot())
+        if not cf then return end
+        local offY = string.find(string.lower(rift.Name), "chest") and 15 or 5
+        hrp.CFrame = cf + Vector3.new(0, offY, 0)
+        Hunter_lastTeleportedRift = rift
+        print(string.format("[RiftHunter] Teleported to %s", rift.Name))
+    end
+
+    -- Read "x Luck" off the surface GUI when present
+    local function Hunter_readLuckFromRift(rift)
+        local display = rift and rift:FindFirstChild("Display")
+        local gui = display and display:FindFirstChildOfClass("SurfaceGui")
+        if not gui then return 0 end
+        local lbl
+        for _, d in ipairs(gui:GetDescendants()) do
+            if d.Name == "Luck" and d:IsA("TextLabel") and type(d.Text) == "string" then
+                lbl = d; break
+            end
+        end
+        if not lbl then return 0 end
+        local n = lbl.Text:match("(%d+)")
+        return tonumber(n) or 0
+    end
+
+    -- Parse time remaining text (supports long/short formats)
+    local function Hunter_getRemainingTime(rift)
+        local display = rift and rift:FindFirstChild("Display")
+        local gui = display and display:FindFirstChildOfClass("SurfaceGui")
+        if not gui then return 0 end
+
+        local timerLabel
+        for _, d in ipairs(gui:GetDescendants()) do
+            if (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and type(d.Text) == "string" then
+                if d.Text:find("minute") or d.Text:find("second") or d.Text:find("m") or d.Text:find("s") then
+                    timerLabel = d; break
+                end
+            end
+        end
+        if not timerLabel then return 0 end
+        local text = string.lower(timerLabel.Text or "")
+        if text == "" or text:find("expired") then return 0 end
+
+        local m, s = text:match("(%d+)%s*minute[s]?%s*(%d+)%s*second[s]?")
+        if m and s then return tonumber(m)*60 + tonumber(s) end
+
+        local mOnly = text:match("(%d+)%s*minute")
+        if mOnly then return tonumber(mOnly)*60 end
+
+        local sOnly = text:match("(%d+)%s*second")
+        if sOnly then return tonumber(sOnly) end
+
+        local m2, s2 = text:match("(%d+)m%s*(%d+)s")
+        if m2 and s2 then return tonumber(m2)*60 + tonumber(s2) end
+        local s3 = text:match("(%d+)s")
+        if s3 then return tonumber(s3) end
+
+        return 0
+    end
+
+    local function Hunter_isEggSelected(riftName)
+        return Hunter_selectedEggs[riftName] == true
+    end
+
+    -- Score: luck-only priority; filter by min luck, selected eggs, and time left
+    local function Hunter_scoreRift(rift)
+        local rname = string.lower(rift.Name)
+        local luck = Hunter_readLuckFromRift(rift)
+        local timeLeft = Hunter_getRemainingTime(rift)
+
+        if timeLeft <= 10 then return nil end
+        if luck < Hunter_minLuck then return nil end
+        if not Hunter_isEggSelected(rname) then return nil end
+
+        return luck, rname, luck, timeLeft
+    end
+
+    local function Hunter_updateInfo()
+        if Hunter_infoText and Hunter_currentTarget then
+            Hunter_infoText:SetDesc(string.format("%s | Luck %dx | â¤%ds left",
+                Hunter_currentTarget.name, Hunter_currentTarget.luck,
+                math.max(0, Hunter_currentTarget.timeLeft or 0)))
+        elseif Hunter_infoText then
+            Hunter_infoText:SetDesc("None")
+        end
+    end
+
+    local function Hunter_scanOnce()
+        local riftFolder = workspace:FindFirstChild("Rendered")
+            and workspace.Rendered:FindFirstChild("Rifts")
+        if not riftFolder then return end
+
+        local best, bestScore = nil, -1
+        for _, rift in ipairs(riftFolder:GetChildren()) do
+            local score, nameNorm, luck, timeLeft = Hunter_scoreRift(rift)
+            if score and score > bestScore then
+                bestScore = score
+                best = { rift = rift, score = score, name = nameNorm, luck = luck, timeLeft = timeLeft }
+            end
+        end
+
+        local currentExpired = false
+        if Hunter_currentTarget then
+            if not Hunter_currentTarget.rift or not Hunter_currentTarget.rift.Parent then
+                currentExpired = true
+            elseif Hunter_getRemainingTime(Hunter_currentTarget.rift) <= 10 then
+                currentExpired = true
+            end
+        end
+
+        if best then
+            local shouldSwitch = (not Hunter_currentTarget) or currentExpired 
+                or (best.rift ~= Hunter_currentTarget.rift and best.score > (Hunter_currentTarget.score or -1))
+            if shouldSwitch then
+                Hunter_currentTarget = best
+                Hunter_updateInfo()
+                Hunter_safeTeleportToRift(Hunter_currentTarget.rift)
+            end
+        else
+            if Hunter_currentTarget then
+                Hunter_currentTarget = nil
+                Hunter_updateInfo()
+            end
+        end
+    end
+
+    local function Hunter_loop()
+        while Hunter_enabled do
+            task.spawn(Hunter_scanOnce)
+            task.wait(math.max(0.25, Hunter_scanDelay))
+        end
+    end
+
+    -- Live remaining-time updates in UI
+    task.spawn(function()
+        while true do
+            task.wait(1)
+            if Hunter_enabled and Hunter_currentTarget and Hunter_currentTarget.rift and Hunter_currentTarget.rift.Parent then
+                local newTime = Hunter_getRemainingTime(Hunter_currentTarget.rift)
+                if newTime and newTime > 0 then
+                    Hunter_currentTarget.timeLeft = newTime
+                    Hunter_updateInfo()
+                end
+            end
+        end
+    end)
+
+    -- UI (same Rifts tab)
+    RiftsTab:Paragraph({
+        Title = "Rift Hunter",
+        Desc  = "Higher luck = higher priority. Switches only when a strictly higher-priority rift appears."
+    })
+
+    Hunter_infoText = RiftsTab:Paragraph({ Title = "Current Target", Desc = "None" })
+
+    RiftsTab:Dropdown({
+        Title = "Eggs to Hunt",
+        Values = EggNames,
+        Value = {},
+        Multi = true,
+        Callback = function(vals)
+            Hunter_selectedEggs = {}
+            for _, v in ipairs(vals) do
+                Hunter_selectedEggs[(toRiftName and toRiftName(v)) or (string.lower(v):gsub('%s+', '-'))] = true
+            end
+            if Hunter_currentTarget and not Hunter_isEggSelected(Hunter_currentTarget.name) then
+                Hunter_currentTarget = nil
+                Hunter_updateInfo()
+            end
+        end
+    })
+
+    RiftsTab:Dropdown({
+        Title = "Minimum Luck",
+        Values = { "5","10","25" },
+        Value = "5",
+        Multi = false,
+        Callback = function(v)
+            Hunter_minLuck = tonumber(v) or 5
+        end
+    })
+
+    RiftsTab:Toggle({
+        Title = "Enable Rift Hunter",
+        Value = false,
+        Callback = function(v)
+            Hunter_enabled = v
+            if v then
+                WindUI:Notify({ Title = "Rift Hunter", Content = "Enabled", Duration = 3 })
+                task.spawn(Hunter_loop)
+            else
+                WindUI:Notify({ Title = "Rift Hunter", Content = "Disabled", Duration = 3 })
+                Hunter_currentTarget = nil
+                Hunter_updateInfo()
+            end
+        end
+    })
+
+    print("[RiftHunter] Ready (integrated in Rifts tab).")
+    --== End Auto Rift Hunter v1.1 integration ==--
+
+
+    local HatchTab = Window:Tab({
+        Title = "Hatching",
+        Icon = "egg",
+        Locked = false
+    })
+
+    local MiscTab = Window:Tab({
+        Title = "Misc",
+        Icon = "plus",
+        Locked = false
+    })
+
+    local CE = Window:Tab({
+        Title = "Current Event",
+        Icon = "between-horizontal-start",
+        Locked = false
+    })
+
+    
+-- ===== Minigames (integrated Board Auto-Dice) =====
+local MinigamesTab = Window:Tab({ Title = "Minigames", Icon = "dice-6" })
+
+-- Begin Integrated Board.lua
+-- Rcash Board Auto-Dice v1.2 (Standalone WindUI)
+-- Author: @RdotA | UI: WindUI (BGSI aesthetic)
+-- Adds per-target hit tracking + live stats
+
+--== Tab ==--
+local Tab = MinigamesTab
+Tab:Paragraph({
+	Title = "Board Game Auto-Dice",
+	Desc = "Targets tiles, snipes with Golden Dice, and tracks hits per tile type."
+})
+
+--== Default Config ==--
+local Config = {
+    AutoBoardGame = false,
+    DICE_TYPE = "Dice",
+    GOLDEN_DICE_DISTANCE = 4,
+    DelayForChanceTile = 0,
+    Verbose = true,
+    TILES_TO_TARGET = {
+        ["special-egg"] = true,
+        ["infinity"]   = true,
+    }
+}
+getgenv().BoardAutoDiceConfig = Config
+
+--== Services / Game Refs ==--
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local BoardUtil = require(ReplicatedStorage.Shared.Utils.BoardUtil)
+local RemoteFunction = ReplicatedStorage.Shared.Framework.Network.Remote.RemoteFunction
+local RemoteEvent = ReplicatedStorage.Shared.Framework.Network.Remote.RemoteEvent
+
+--== Utils ==--
+local function log(...)
+    if Config.Verbose then
+        print("[Rcash-Board]", ...)
+    end
+end
+
+local function safeWait(t)
+    task.wait((t and t > 0) and t or 0.3)
+end
+
+--== Stats ==--
+local Stats = {
+    TotalRolls = 0,
+    GoldenDiceUses = 0,
+    TargetHits = {}, -- [tileType] = count
+}
+
+local function resetStats()
+    Stats.TotalRolls = 0
+    Stats.GoldenDiceUses = 0
+    Stats.TargetHits = {}
+end
+
+local function incrementTargetHit(tileType)
+    if not tileType then return end
+    Stats.TargetHits[tileType] = (Stats.TargetHits[tileType] or 0) + 1
+end
+
+local function formatTargetHits()
+    local parts = {}
+    for tileType, count in pairs(Stats.TargetHits) do
+        table.insert(parts, string.format("%s: %d", tileType, count))
+    end
+    if #parts == 0 then
+        return "No target tiles hit yet."
+    end
+    return table.concat(parts, " | ")
+end
+
+--== Core Logic ==--
+local function takeTurn(diceType)
+    log("Rolling with:", diceType)
+    local success, rollResponse = pcall(function()
+        return RemoteFunction:InvokeServer("RollDice", diceType)
+    end)
+
+    if success and rollResponse then
+        Stats.TotalRolls += 1
+        if diceType == "Golden Dice" then
+            Stats.GoldenDiceUses += 1
+        end
+
+        log(("  > Success! Rolled: %s ; Dest Tile: %s"):format(
+            tostring(rollResponse.Roll),
+            tostring(rollResponse.Tile and rollResponse.Tile.Index)
+        ))
+
+        local expectedTile = rollResponse.Tile and rollResponse.Tile.Index
+        local moveCompleted = false
+        local timeout = 5
+        local startTime = tick()
+
+        while tick() - startTime < timeout do
+            task.wait(0.1)
+            local currentTile = LocalPlayer:GetAttribute("BoardIndex")
+            if currentTile == expectedTile then
+                log("  > Landing confirmed at Tile", currentTile)
+                moveCompleted = true
+                break
+            end
+        end
+
+        if moveCompleted then
+            local landedTileInfo = expectedTile and BoardUtil.Nodes[expectedTile]
+            local tileType = landedTileInfo and landedTileInfo.Type or "?"
+            log(("  > Claiming tile reward (%s)..."):format(tileType))
+            RemoteEvent:FireServer("ClaimTile")
+
+            if tileType and Config.TILES_TO_TARGET[tileType] then
+                incrementTargetHit(tileType)
+            end
+
+            safeWait(0.2)
+            return rollResponse
+        else
+            log("  > Landing FAILED: timed out waiting for BoardIndex to update.")
+            return nil
+        end
+    else
+        log("  > Roll failed or was rejected.")
+        safeWait(0.2)
+        return nil
+    end
+end
+
+--== Main Loop ==--
+local Running = false
+
+local function mainLoop(updateStatsUI)
+    if Running then return end
+    Running = true
+    resetStats()
+    log("Auto-Dice loop: STARTED")
+
+    while Config.AutoBoardGame do
+        local currentTileNumber = LocalPlayer:GetAttribute("BoardIndex")
+        if not currentTileNumber then
+            log("Waiting for player to be on the board...")
+            task.wait(2)
+            continue
+        end
+
+        local totalTiles = #BoardUtil.Nodes
+        local actionTaken = false
+        local turnResponse = nil
+
+        log("---")
+        log("Current Tile:", currentTileNumber)
+
+        -- Golden Dice snipe logic
+        for i = 1, Config.GOLDEN_DICE_DISTANCE do
+            local nextTileIndex = currentTileNumber + i
+            if nextTileIndex > totalTiles then nextTileIndex = nextTileIndex - totalTiles end
+            local tileInfo = BoardUtil.Nodes[nextTileIndex]
+            if tileInfo and Config.TILES_TO_TARGET[tileInfo.Type] then
+                log(("Target '%s' found %d tiles ahead! Using Golden Dice..."):format(tileInfo.Type, i))
+                for _ = 1, i do
+                    turnResponse = takeTurn("Golden Dice")
+                    updateStatsUI()
+                    if not turnResponse then break end
+                end
+                actionTaken = true
+                break
+            end
+        end
+
+        -- Regular Dice chance logic
+        if not actionTaken then
+            local maxRoll = (Config.DICE_TYPE == "Dice" and 6 or 10)
+            for i = 1, maxRoll do
+                local nextTileIndex = currentTileNumber + i
+                if nextTileIndex > totalTiles then nextTileIndex = nextTileIndex - totalTiles end
+                local tileInfo = BoardUtil.Nodes[nextTileIndex]
+                if tileInfo and Config.TILES_TO_TARGET[tileInfo.Type] then
+                    log(("Target '%s' found in range! Using %s..."):format(tileInfo.Type, Config.DICE_TYPE))
+                    turnResponse = takeTurn(Config.DICE_TYPE)
+                    updateStatsUI()
+                    actionTaken = true
+                    break
+                end
+            end
+        end
+
+        -- Default roll if no target
+        if not actionTaken then
+            log(("No targets in range. Rolling with %s..."):format(Config.DICE_TYPE))
+            turnResponse = takeTurn(Config.DICE_TYPE)
+            updateStatsUI()
+        end
+
+        -- Chance tile delay
+        if turnResponse then
+            local idx = turnResponse.Tile and turnResponse.Tile.Index
+            local landedTileInfo = idx and BoardUtil.Nodes[idx]
+            if landedTileInfo and landedTileInfo.Type == "chance" then
+                log(("Landed on 'chance'. Waiting %.1fs for animation..."):format(Config.DelayForChanceTile))
+                task.wait(Config.DelayForChanceTile)
+            end
+        end
+
+        task.wait(0.1)
+    end
+
+    Running = false
+    log("Auto-Dice loop: STOPPED")
+end
+
+--== WindUI Controls ==--
+Tab:Divider()
+
+local StatusLine = Tab:Paragraph({ Title = "Status", Desc = "Idle" })
+local StatsBox = Tab:Paragraph({ Title = "Session Stats", Desc = "Rolls: 0 | Golden Dice: 0\nNo target tiles hit yet." })
+
+local function updateStatsUI()
+    StatsBox:SetDesc(string.format(
+        "Rolls: %d | Golden Dice: %d\n%s",
+        Stats.TotalRolls, Stats.GoldenDiceUses, formatTargetHits()
+    ))
+end
+
+Tab:Toggle({
+    Title = "Auto Board Game",
+    Value = Config.AutoBoardGame,
+    Callback = function(state)
+        Config.AutoBoardGame = state
+        if state then
+            WindUI:Notify({ Title="Rcash Board", Content="Auto-Dice ON", Duration=3 })
+            task.spawn(function() mainLoop(updateStatsUI) end)
+        else
+            WindUI:Notify({ Title="Rcash Board", Content="Auto-Dice OFF", Duration=3 })
+        end
+    end
+})
+
+--== Live Status Updater ==--
+task.spawn(function()
+    while true do
+        if Config.AutoBoardGame then
+            local idx = LocalPlayer:GetAttribute("BoardIndex")
+            local tileType = "?"
+            local node = idx and BoardUtil.Nodes[idx]
+            if node and node.Type then tileType = node.Type end
+            StatusLine:SetDesc(string.format(
+                "Running â¢ Current Tile: %s â¢ Dice: %s â¢ Tile: %s",
+                tostring(idx or "?"), tostring(Config.DICE_TYPE), tostring(tileType)
+            ))
+        else
+            StatusLine:SetDesc("Idle")
+        end
+        task.wait(0.4)
+    end
+end)
+
+--== Tips ==--
+-- Tab:Divider()
+-- Tab:Paragraph({
+--     Title = "Tips",
+--     Desc = table.concat({
+--         "â¢ Bot snipes close target tiles with Golden Dice.",
+--         "â¢ Dice Type sets the default roll when no targets in range.",
+--         "â¢ See per-target hit counts below the stats box.",
+--         "â¢ Toggle 'Auto Board Game' to start/stop automation.",
+--     }, "\n")
+-- })
+Tab:Divider()
+
+
+Tab:Paragraph({ Title = "Settings" })
+
+local allTileTypes = { "special-egg", "infinity", "golden-dice", "giant-dice", "dice", "dice-key", "chance", "basic" }
+
+Tab:Dropdown({
+    Title = "Target Tile Types",
+    Values = allTileTypes,
+    Multi = true,
+    Value = (function()
+        local sel = {}
+        for _, t in ipairs(allTileTypes) do
+            if Config.TILES_TO_TARGET[t] then table.insert(sel, t) end
+        end
+        return sel
+    end)(),
+    Callback = function(selected)
+        Config.TILES_TO_TARGET = {}
+        for _, t in ipairs(selected) do
+            Config.TILES_TO_TARGET[t] = true
+        end
+        WindUI:Notify({ Title="Targets Updated", Content="Tile targets saved.", Duration=3 })
+    end
+})
+
+Tab:Dropdown({
+    Title = "Dice Type to Use",
+    Values = { "Dice", "Giant Dice", "Golden Dice" },
+    Multi = false,
+    Value = Config.DICE_TYPE,
+    Callback = function(val)
+        Config.DICE_TYPE = val
+        WindUI:Notify({ Title="Dice Type", Content="Primary dice set to "..val, Duration=3 })
+    end
+})
+
+Tab:Slider({
+    Title = "Golden Dice Snipe Distance",
+    Step = 1,
+    Value = { Min=1, Max=10, Default=Config.GOLDEN_DICE_DISTANCE },
+    Callback = function(v)
+        Config.GOLDEN_DICE_DISTANCE = math.floor(v)
+    end
+})
+
+-- Tab:Toggle({
+--     Title = "Verbose Console Logs",
+--     Value = Config.Verbose,
+--     Callback = function(state)
+--         Config.Verbose = state
+--     end
+-- })
+
+
+
+print("[Rcash-Board] WindUI Auto-Dice v1.2 ready.")
+
+-- End Integrated Board.lua
+local SettingsTab = Window:Tab({
+        Title = "Settings",
+        Icon = "settings",
+        Locked = false
+    })
+
+    local TestSection = Window:Section({
+        Title = "Mind Joining The Discord?",
+        Icon = "nebula:nebula",
+    })
+
+    Window:SelectTab(1)
+
+-- Information Tab
+    -- Discord
+    local InviteCode = "JQFrBajQxW"
+    local DiscordAPI = "https://discord.com/api/v10/invites/" .. InviteCode .. "?with_counts=true&with_expiration=true"
+
+    local Response
+    local ErrorMessage = nil
+
+    xpcall(function()
+        Response = game:GetService("HttpService"):JSONDecode(WindUI.Creator.Request({
+            Url = DiscordAPI,
+            Method = "GET",
+            Headers = {
+                ["Accept"] = "application/json"
+            }
+        }).Body)
+    end, function(err)
+        warn("err fetching discord info: " .. tostring(err))
+        ErrorMessage = tostring(err)
+        Response = nil
+    end)
+
+    if Response and Response.guild then
+        local ParagraphConfig = {
+            Title = Response.guild.name,
+            Desc =
+                ' <font color="#52525b">â¢</font> Member Count: ' .. tostring(Response.approximate_member_count) ..
+                '\n <font color="#16a34a">â¢</font> Online Count: ' .. tostring(Response.approximate_presence_count),
+            Image = "https://cdn.discordapp.com/icons/" .. Response.guild.id .. "/" .. Response.guild.icon .. ".png?size=256",
+            ImageSize = 42,
+            Buttons = {
+                {
+                    Icon = "link",
+                    Title = "Copy Discord Invite",
+                    Callback = function()
+                        pcall(function()
+                            setclipboard("https://discord.gg/" .. InviteCode)
+                        end)
+                        WindUI:Notify({
+                            Title = "Rcash Hub",
+                            Content = "Link Copied to Clip Board!",
+                            Duration = 3,
+                            Icon = "link",
+                        })
+                    end
+                },
+                {
+                    Icon = "refresh-cw",
+                    Title = "Update Info",
+                    Callback = function()
+                        xpcall(function()
+                            local UpdatedResponse = game:GetService("HttpService"):JSONDecode(WindUI.Creator.Request({
+                                Url = DiscordAPI,
+                                Method = "GET",
+                            }).Body)
+                        
+                            if UpdatedResponse and UpdatedResponse.guild then
+                                DiscordInfo:SetDesc(
+                                    ' <font color="#52525b">â¢</font> Member Count: ' .. tostring(UpdatedResponse.approximate_member_count) ..
+                                    '\n <font color="#16a34a">â¢</font> Online Count: ' .. tostring(UpdatedResponse.approximate_presence_count)
+                                )
+                            end
+                        end, function(err)
+                            warn("err updating discord info: " .. tostring(err))
+                        end)
+                    end
+                }
+            }
+        }
+    
+        if Response.guild.banner then
+            ParagraphConfig.Thumbnail = "https://cdn.discordapp.com/banners/" .. Response.guild.id .. "/" .. Response.guild.banner .. ".png?size=256"
+            ParagraphConfig.ThumbnailSize = 80
+        end
+    
+        local DiscordInfo = InfoTab:Paragraph(ParagraphConfig)
+    else
+        InfoTab:Paragraph({
+            Title = "Error when receiving information about the Discord server",
+            Desc = ErrorMessage or "Unknown error occurred",
+            Image = "triangle-alert",
+            ImageSize = 26,
+            Color = "Red",
+        })
+    end
+
+
+    InfoTab:Paragraph({
+        Title = "Bubble Gum Simulator INFINITY",
+        Desc = string.format([[Rcash Hub %s
+
+FEATURES:
+
+â¢ Auto blow bubbles
+â¢ Auto collect all pickups
+â¢ Sell all items
+â¢ Auto obby
+â¢ Anti-AFK protection
+â¢ Auto-reconnect on disconnect
+â¢ Save and load config
+â¢ Auto-load your preferred setup on startup
+â¢ Multiple theme options for personalization
+
+CONTROLS:
+
+â¢ Right Ctrl = Show/Hide Interface
+
+CHANGELOGS:
+
+v1.3
+â¢ Added Nebula icon library for enhanced UI
+â¢ Custom background image for main window
+â¢ Improved theme system with dropdown and toggle
+â¢ Enhanced egg selection with search bar
+
+v1.1
+â¢ Added Anti-AFK system
+â¢ Added Auto-reconnect feature
+â¢ Improved config save/load
+
+Made for you with love <3]], SCRIPT_VERSION)
+    })
+
+-- Server Settings
+    SS:Button({
+        Title = "Rejoin Server",
+        Value = false,
+        Callback = function(Value)
+            game:GetService("TeleportService"):Teleport(game.PlaceId, game.Players.LocalPlayer)
+        end
+    })
+
+    SS:Button({
+        Title = "Server Hop",
+        Value = false,
+        Callback = function(Value)
+            local Servers = {}
+            local PlaceID = game.PlaceId
+            local AllIDs = {}
+            local foundAnything = ""
+            local actualHour = os.date("!*t").hour
+            local Deleted = false
+        
+            function TPReturner()
+                local Site;
+                if foundAnything == "" then
+                    Site = game.HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100'))
+                else
+                    Site = game.HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100&cursor=' .. foundAnything))
+                end
+                local ID = ""
+                if Site.nextPageCursor and Site.nextPageCursor ~= "null" and Site.nextPageCursor ~= nil then
+                    foundAnything = Site.nextPageCursor
+                end
+                local num = 0;
+                for i,v in pairs(Site.data) do
+                    if v.playing ~= v.maxPlayers then
+                        if v.id ~= game.JobId then
+                            table.insert(Servers, v.id)
+                        end
+                    end
+                end
+            end
+        
+            function Teleport()
+                if #Servers > 0 then
+                    game:GetService("TeleportService"):TeleportToPlaceInstance(PlaceID, Servers[math.random(1, #Servers)], LocalPlayer)
+                else
+                    TPReturner()
+                    wait(1)
+                    Teleport()
+                end
+            end
+        
+            TPReturner()
+            wait(1)
+            Teleport()
+        end
+    })
+
+    SS:Divider()
+
+    SS:Button({
+        Title = "Reload Rcash Hub",
+        Value = false,
+        Callback = function(Value)
+            Window:Destroy()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/IRdotAI/Rcash-Hub/refs/heads/main/BGSI.lua"))()
+        end
+    })
+
+    SS:Button({
+        Title = "Destroy GUI",
+        Value = false,
+        Callback = function(Value)
+            WindUI:Notify({
+                Title = "Rcash Hub",
+                Content = "Rcash hub Destroyed!",
+                Duration = 1,
+                Icon = "shredder",
+            })
+            task.wait(1) 
+            Window:Destroy()
+        end
+    })
+
+-- Farm Tab
+    FarmTab:Toggle({
+        Flag = "ABB",
+        Title = "Auto Blow Bubbles",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoBlowBubbles = Value
+            if Value then task.spawn(AutoBlowBubbles) end
+        end
+    })
+
+    FarmTab:Divider()
+
+    local AutoSellSec = FarmTab:Section({ 
+        Title = "AutoSell",
+        TextXAlignment = "Center",
+        TextSize = 17,
+        Opened = false,
+    })
+
+    AutoSellSec:Paragraph({
+        Title = "Auto Sell",
+        Desc = string.format([[Rcash Hub %s
+
+To change the timer for the auto sell you MUST first turn off auto sell and then change it then turn it back on again
+]], SCRIPT_VERSION)
+    })
+
+    AutoSellSec:Toggle({
+        Flag = "AS",
+        Title = "Enable Auto Sell",
+        Value = false,
+        Callback = function(value)
+            _G.AutoSell = value
+            if value then
+                AutoSellFunction()
+            end
+        end
+    })
+
+    AutoSellSec:Dropdown({
+        Flag = "SL",
+        Title = "Fallback Sell Location",
+        Values = { "Twilight Overworld", "Base (W1 Surface)", "Minigame World (W2 Surface)", "Minigame World Robot Factory", "Bubble Rift" },
+        Value = "Twilight Overworld",
+        Callback = function(option)
+            _G.SelectedFallback = option
+            print("Fallback selected: " .. option)
+        end
+    })
+
+    AutoSellSec:Slider({
+        Flag = "BST",
+        Title = "Bubble Sell Timer (seconds)",
+        Step = 1,
+        Value = {
+            Min = 2,
+            Max = 60,
+            Default = 2,
+        },
+        Callback = function(value)
+            _G.SellTimer = value
+            print("Sell Timer set to: " .. value .. " seconds")
+        end
+    })
+
+    FarmTab:Divider()
+
+    FarmTab:Toggle({
+        Flag = "CP",
+        Title = "Auto Collect Pickups",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoCollectPickups = Value
+        end
+    })
+
+    FarmTab:Toggle({
+        Flag = "CO",
+        Title = "Auto Complete Obbys",
+        Value = false,
+        Callback = function(state)
+            _G.AutoObby = state
+            if state then
+                WindUI:Notify({
+                    Title = "Rcash Hub",
+                    Content = "Auto Obby & Chests now working!",
+                    Duration = 3
+                })
+            else
+                WindUI:Notify({
+                    Title = "Rcash Hub",
+                    Content = "Auto Obbys Paused",
+                    Duration = 3
+                })
+            end
+        end
+    })
+
+-- Pets Tab
+
+    PetsTab:Divider()
+    
+    PetsTab:Toggle({
+        Flag = "EBP",
+        Title = "Auto Equip Best Pet",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoEquipBest = Value
+            if Value then task.spawn(AutoEquipBest) end
+        end
+    })
+
+    PetsTab:Toggle({
+        Flag = "DUP",
+        Title = "Auto Delete Unused Pets",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoSellPets = Value
+            if Value then task.spawn(AutoSellPets) end
+        end
+    })
+
+    task.spawn(function()
+        while task.wait(2) do
+            if WindUI.Unloaded then break end
+            local newList = getEquippedPetsData()
+            if table.concat((function() local n = {} for _,v in ipairs(newList) do table.insert(n, v.name) end return n end)(), ",") ~= table.concat((function() local n = {} for _,v in ipairs(equippedPetsData) do table.insert(n, v.name) end return n end)(), ",") then
+                equippedPetsData = newList
+                local namesOnly = {}
+                for _,v in ipairs(equippedPetsData) do table.insert(namesOnly, v.name) end
+            
+                PetDropdown:SetValues(namesOnly, currentSelectedPetNames)
+            end
+        end
+    end
+    )
+
+-- Hatch Tab
+
+    local AutoHatchSec = HatchTab:Section({ 
+        Title = "Auto Hatch",
+        TextXAlignment = "Center",
+        TextSize = 17,
+        Opened = false,
+    })
+
+    AutoHatchSec:Dropdown({
+        Flag = "EGGTP",
+        Title = "Select Egg to Teleport/Hatch",
+        Desc = "Select an egg to automatically teleport to it and set it for AutoHatch.",
+        Values = EggDisplayNames, 
+        Value = "",
+        SearchBarEnabled = true, 
+        Callback = function(Value)
+            _G.SelectedEgg = Value
+            TeleportToEgg(Value)
+        end
+    })
+
+    AutoHatchSec:Button({
+        Flag = "EGGTPBTN",
+        Title = "Teleport To Selected Egg",
+        Value = false,
+        Callback = function(Value)
+            if _G.SelectedEgg ~= "" then 
+                TeleportToEgg(_G.SelectedEgg)
+            else 
+                WindUI:Notify({
+                    Title = "Rcash Hub ",
+                    Content = "Please select an egg first.",
+                    Duration = 3,
+                    Icon = "shield-alert",
+                })
+            end
+        end
+    })
+
+    AutoHatchSec:Toggle({
+        Flag = "AH",
+        Title = "Auto Hatch",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoHatch = Value
+            if Value then
+                task.spawn(AutoHatch)
+            end
+        end
+    })
+
+    AutoHatchSec:Toggle({
+        Flag = "SE",
+        Title = "Auto Spam E",
+        Desc = "Auto Spam The Key `E` For Faster Hatching And Auto Obby",
+        Value = false,
+        Callback = function(Value)
+            _G.SpamE = Value
+            if Value then
+                task.spawn(SpamEKey)
+            end
+        end
+    })
+
+    AutoHatchSec:Toggle({
+        Flag = "HHA",
+        Title = "Hide Hatch Animation",
+        Value = false,
+        Callback = function(Value)
+            _G.HideHatchAnim = Value
+        end
+    })
+
+    HatchTab:Divider()
+
+    local inventoryEggDropdown = HatchTab:Dropdown({
+        Flag = "IEGD",
+        Title = "Select Inventory Egg to Hatch",
+        Values = inventoryEggDisplayNames,
+        Value = "None",
+        Callback = function(Value)
+            if Value and Value ~= "None" then
+                _G.SelectedInventoryEgg = Value:match("(.+): %d+") or Value
+                WindUI:Notify({
+                    Title = "Rcash Hub ",
+                    Content = "Selected Inventory Egg: " .. _G.SelectedInventoryEgg,
+                    Duration = 3,
+                    Icon = "egg",
+                })
+            else
+                _G.SelectedInventoryEgg = "None"
+            end
+        end
+    })
+
+-- Create toggle
+    HatchTab:Toggle({
+        Flag = "AHIE",
+        Title = "Auto Hatch Selected Inventory Egg",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoHatchInventoryEggs = Value
+            if Value and _G.SelectedInventoryEgg == "None" then
+                WindUI:Notify({
+                    Title = "Rcash Hub ",
+                    Content = "Please select an inventory egg first.",
+                    Duration = 3,
+                    Icon = "shield-alert",
+                })
+                _G.AutoHatchInventoryEggs = false
+            elseif Value then
+                task.spawn(AutoHatchInventoryEggs)
+            end
+        end
+    })
+
+
+-- Misc Tab
+
+    MiscTab:Divider()
+
+    local AutoSec = MiscTab:Section({ 
+        Title = "Rewards Automation",
+        TextXAlignment = "Center",
+        TextSize = 17,
+        Opened = false,
+    })
+
+    AutoSec:Toggle({
+        Flag = "CPR",
+        Title = "Auto Claim Playtime Rewards",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoClaimPTR = Value
+            if Value then task.spawn(AutoClaimPTR) end
+        end
+    })
+
+    AutoSec:Toggle({
+        Flag = "CSR",
+        Title = "Auto Claim Season Rewards",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoCS = Value
+            if Value then task.spawn(AutoCS) end
+        end
+    })
+
+    AutoSec:Toggle({
+        Flag = "ACFS",
+        Title = "Auto Claim Festival Spin",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoClaimFestivalSpin = Value
+            if Value then task.spawn(SpinFestivalWheel) end
+        end
+    })
+
+    AutoSec:Toggle({
+        Flag = "GORB",
+        Title = "Auto Use Golden Orb",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoGoldenOrb = Value
+            if Value then task.spawn(AutoGoldenOrb) end
+        end
+    })
+
+    AutoSec:Toggle({
+        Flag = "ACAC",
+        Title = "Auto Claim All Chests",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoClaimAllChests = Value
+            if Value then task.spawn(AutoClaimAllChests) end
+        end
+    })
+
+    MiscTab:Divider()
+
+    MiscTab:Paragraph({
+        Title = "Auto Open Gifts",
+        Desc = string.format([[Rcash Hub %s
+
+To use the Auto Open Gift function you must have the gifts in your inventory, then you select which gift you would like to be opened and you toggle the `Auto Open Selected Gifts` afterwards and if lags too much turn the `Skip Gift Animation` Toggle on
+]], SCRIPT_VERSION)
+    })
+
+    MiscTab:Dropdown({
+        Flag = "GD",
+        Title = "Select Item to Auto-Use",
+        Values = GiftDisplayNames,
+        Value = GiftDisplayNames[1],
+        Callback = function(Value)
+            if Value and Value ~= "None" then
+                _G.SelectedGift = Value:match("(.+): %d+") or Value
+                _G.GiftsToOpen = {_G.SelectedGift}
+            else
+                _G.SelectedGift = "None"
+                _G.GiftsToOpen = {}
+            end
+        
+            WindUI:Notify({
+                Title = "Rcash Hub ",
+                Content = "Auto-Use Item set to: " .. _G.SelectedGift,
+                Duration = 3,
+                Icon = "gift",
+            })
+        end
+    })
+
+    MiscTab:Toggle({
+        Flag = "OSG",
+        Title = "Auto Open Selected Gift",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoUseSelectedGift = Value
+            _G.AutoGift = Value
+            if Value then 
+                task.spawn(AutoUseSelectedGift)
+                task.spawn(runGiftController)
+            end
+        end
+    })
+
+    MiscTab:Toggle({
+        Flag = "SGA",
+        Title = "Skip Gift Animation",
+        Value = false,
+        Callback = function(Value)
+            _G.SkipGiftAnimation = Value
+            _G.AutoGift = Value
+            if Value then
+                task.spawn(runGiftController)
+            end
+        end
+    })
+
+-- Current Events Tab
+    CE:Toggle({
+        Flag = "SAW",
+        Title = "Auto Spin Halloween Wheel",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoSpinHalloweenWheel = Value
+            if Value then task.spawn(SpinHalloweenWheel) end
+        end
+    })
+
+    CE:Toggle({
+        Flag = "CAP",
+        Title = "Auto Claim Halloween Free Spin",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoClaimHalloweenSpin = Value
+            if Value then task.spawn(AutoClaimHalloweenSpin) end
+        end
+    })
+
+    CE:Toggle({
+        Flag = "BAS",
+        Title = "Auto Buy Autumn Shop",
+        Value = false,
+        Callback = function(Value)
+            _G.AutoBuyAutumnShop = Value
+            if Value then task.spawn(AutoBuyAutumnShop) end
+        end
+    })
+
+
+-- Settings Tab
+    local ConfigManager = Window.ConfigManager
+    local ConfigName = "RcashHub_BGSI"
+
+    SettingsTab:Paragraph({
+        Title = "Customize Interface",
+        Desc = "Personalize your Rcash Hub experience",
+        Image = "palette",
+        ImageSize = 20,
+        Color = "White"
+    })
+
+    local themes = {}
+    for themeName, _ in pairs(WindUI:GetThemes()) do
+        table.insert(themes, themeName)
+    end
+    table.sort(themes)
+
+    themeDropdown = SettingsTab:Dropdown({
+        Flag = "Theme",
+        Title = "Select Theme",
+        Values = themes,
+        SearchBarEnabled = true,
+        MenuWidth = 280,
+        Value = WindUI:GetCurrentTheme(),
+        Callback = function(theme)
+            canChangeDropdown = false
+            WindUI:SetTheme(theme)
+            canChangeDropdown = true
+        end
+    })
+
+    darkModeToggle = SettingsTab:Toggle({
+        Flag = "DM",
+        Title = "Enable Dark Mode",
+        Desc = "Use dark color scheme",
+        Value = WindUI:GetCurrentTheme() == "Dark",
+        Callback = function(state)
+            if canChangeTheme then
+                WindUI:SetTheme(state and "Dark" or "Light")
+                if canChangeDropdown then
+                    themeDropdown:Set(state and "Dark" or "Light")
+                end
+            end
+        end
+    })
+
+    WindUI:OnThemeChange(function(theme)
+        canChangeTheme = false
+        if darkModeToggle then
+            darkModeToggle:Set(theme == "Dark")
+        end
+        canChangeTheme = true
+    end)
+
+    SettingsTab:Divider()
+
+    SettingsTab:Keybind({
+        Flag = "KB",
+        Title = "Keybind",
+        Desc = "Keybind to open ui",
+        Value = "RightControl",
+        Callback = function(v)
+            Window:SetToggleKey(Enum.KeyCode[v])
+        end
+    })
+
+    SettingsTab:Divider()
+
+    SettingsTab:Space()
+
+    SettingsTab:Space()
+
+    task.spawn(AutoPickupLoop)
+
+end 
+
