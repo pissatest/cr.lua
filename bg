@@ -1,3 +1,4 @@
+
 do
     local URL = "https://raw.githubusercontent.com/issapizzapizza/blocker/refs/heads/main/uiblocker.lua"
 
@@ -110,24 +111,33 @@ if game.PlaceId == 85896571713843 then
         return UserInputService.TouchEnabled
     end
 
-    _G.OldGift = _G.OldGift or PhysicalItem.Gift
-    _G.PopUpConnection = _G.PopUpConnection or nil
-    local genericFolder = Workspace.Rendered:FindFirstChild("Generic")
+    
+    -- Gift hook with guards (PhysicalItem may be nil or not expose .Gift in some builds)
+    local function safeHookGift()
+        local ok, mod = pcall(function()
+            return PhysicalItem or require(ReplicatedStorage.Client.Effects.PhysicalItem)
+        end)
+        if not ok then
+            ok, mod = pcall(function()
+                return require(ReplicatedStorage.Shared.Framework.Modules.Classes.PhysicalItem)
+            end)
+        end
+        if not ok or type(mod) ~= "table" or type(mod.Gift) ~= "function" then
+            WindUI:Notify({ Title = "AutoGift", Content = "Gift module not found; skipping hook.", Duration = 4 })
+            return
+        end
 
-    local function getLocalData()
-        return LocalData:Get()
-    end
+        _G.OldGift = _G.OldGift or mod.Gift
+        _G.PopUpConnection = _G.PopUpConnection or nil
+        local genericFolder = Workspace.Rendered:FindFirstChild("Generic")
 
-    local function runGiftController()
-        PhysicalItem.Gift = function(giftId, giftType, giftPosition)
+        mod.Gift = function(giftId, giftType, giftPosition)
             if not _G.AutoGift then return _G.OldGift(giftId, giftType, giftPosition) end
-            
             task.spawn(function()
                 pcall(function()
                     RemoteEvent:FireServer("ClaimGift", giftId)
                 end)
             end)
-            
             return nil
         end
 
@@ -139,32 +149,10 @@ if game.PlaceId == 85896571713843 then
                     end
                 end)
             end
-        else
-            if _G.PopUpConnection then
-                _G.PopUpConnection:Disconnect()
-                _G.PopUpConnection = nil
-            end
         end
+    end
+    safeHookGift()
 
-        RemoteEvent:FireServer("SetSetting", "Item Notifications", false)
-
-        if _G.AutoGift then
-            for _, gift in pairs(_G.GiftsToOpen) do
-                while _G.AutoGift do
-                    local am = getLocalData().Powerups[gift] or 0
-                    if am > 0 then
-                        RemoteEvent:FireServer(
-                            "UseGift",
-                            gift,
-                            (am > 25 and 25) or am
-                        )
-                        task.wait(_G.WaitTime)
-                    else
-                        break
-                    end
-                end
-            end
-        end
     end
 
     if isPC() then
@@ -904,7 +892,7 @@ end)
                     FishingUtil.BASE_REEL_SPEED = 9999
                     FishingUtil.GetReelSpeed = function(_, _, _) return 9999 end
                 else
-                    -- no-op: leaving defaults when disabled; game will re-require with defaults on teleport/rejoin
+                    -- no-op; defaults restored on re-require when switching servers
                 end
             end
         end
@@ -920,7 +908,6 @@ end)
             ["Classic Island"]    = { FishingCFrame = CFrame.new(-41505,10,-20593) },
         }
 
-        -- Utils
         local function getHRP()
             local ch = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             return ch:WaitForChild("HumanoidRootPart")
@@ -971,7 +958,6 @@ end)
             end
         end
 
-        -- UI state
         local automationEnabled = false
         local fastReelEnabled = true
         local currentMode = "Specific Zone"
@@ -980,7 +966,6 @@ end)
         table.sort(zoneNames)
         local selectedZone = zoneNames[1] or "Fisher's Island"
 
-        -- UI
         FarmTab:Section({
             Title = "Auto Fish",
             TextXAlignment = "Center",
@@ -1011,7 +996,6 @@ end)
                 applyFastReel(v)
             end
         })
-        -- apply initial patch
         applyFastReel(fastReelEnabled)
 
         local function resolveQuestZone()
@@ -1027,12 +1011,10 @@ end)
         end
 
         local function getHighestIsland()
-            -- Simple heuristic: pick the last alphabetical zone; replace with game data if needed
             return zoneNames[#zoneNames]
         end
 
         local function getMissingFishZone()
-            -- Fallback: pick first known zone
             return zoneNames[1]
         end
 
@@ -1066,7 +1048,6 @@ end)
                     task.spawn(function()
                         if waitUntilArrived(dest, 12, 8) then
                             equipRod()
-                            -- ensure module is ready
                             local ready, t0 = false, tick()
                             repeat
                                 task.wait(0.4)
@@ -1091,7 +1072,6 @@ end)
             end
         })
 
-        -- keep alignment between mode/zone and live position every few seconds while enabled
         task.spawn(function()
             while task.wait(5) do
                 if not automationEnabled then continue end
@@ -3086,4 +3066,3 @@ To use the Auto Open Gift function you must have the gifts in your inventory, th
     task.spawn(AutoPickupLoop)
 
 end 
-
